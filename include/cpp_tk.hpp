@@ -228,9 +228,6 @@ public:
         title("tk");
         geometry("300x300");
         protocol("WM_DELETE_WINDOW", [this](){quit();});
-        evaluate("wm title . \"tk\"");
-        evaluate("wm geometry . 300x300");
-        evaluate("wm protocol . WM_DELETE_WINDOW {exit}");        
     }
 
     Tk& title(const std::string& title)
