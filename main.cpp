@@ -4,33 +4,36 @@
 int main()
 {
     auto th = std::thread{[](){
-        Interpreter interp;
+        auto tk     = Tk();
 
-        interp.evaluate("wm title . \"Minimal Tk GUI\"");
-        interp.evaluate("wm geometry . 300x200");
-        interp.evaluate("wm protocol . WM_DELETE_WINDOW {exit}");
-
-        Frame frame(&interp);
-        frame.pack();
-
-        Label lbl(&frame);
-        lbl.text("LLLL")
+        auto frame  = Frame(&tk);
+        frame
             .pack();
 
-        Button btn(&frame);
-        btn.text("Click Me")
-            .command([&lbl](){ 
-                std::cout << "clicked!" << std::endl; 
-                lbl.text("CLICKED").config();
+        auto label  = Label(&frame);
+        label
+            .text("LLLL")
+            .pack();
+
+        auto entry  = Entry(&frame);
+        entry
+            .pack();
+
+        auto button = Button(&frame);
+        button
+            .text("Click Me")
+            .command([&label, &entry](){ 
+                std::cout << entry.get() << std::endl; 
+                label.text("CLICKED");
             })
             .pack();
 
-        Toplevel win(&interp);
-        win.title("Sub Window")
-            .geometry("400x300")
-            .protocol("WM_DELETE_WINDOW", "exit");
+        auto toplevel   = Toplevel(&tk);
+        toplevel
+            .title("Sub Window")
+            .geometry("400x300");
 
-        interp.evaluate("vwait forever");
+        tk.mainloop();
     }};
 
     th.join();
