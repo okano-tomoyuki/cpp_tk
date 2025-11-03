@@ -9,6 +9,9 @@
 #include <iostream>
 #include <functional>
 #include <map>
+#include <unordered_map>
+#include <thread>
+#include <vector>
 
 namespace cpp_tk
 {
@@ -89,596 +92,232 @@ struct Event
     std::string keysym;
     int         keycode;
     std::string type;
-
-    explicit Event()
-        : x(0)
-        , y(0)
-        , x_root(0)
-        , y_root(0)
-        , keycode(0)
-    {}
 };
-
 
 class Interpreter
 {
 
 public:
-    Interpreter()
-    {
-        interp_ = Tcl_CreateInterp();
-        Tcl_Init(interp_);
-        Tk_Init(interp_);
-    }
 
-    ~Interpreter()
-    {
-        Tcl_DeleteInterp(interp_);
-    }
+    Interpreter();
+    
+    ~Interpreter();
 
-    std::string evaluate(const std::string &command, bool* success = nullptr)
-    {
-        int code = Tcl_Eval(interp_, command.c_str());
-        if (success)
-        {
-            *success = (code == TCL_OK);
-        }
-        return Tcl_GetStringResult(interp_);
-    }
-
+    std::string evaluate(const std::string &command, bool* success = nullptr);
+    
     void set_var(const std::string& name, const std::string& value);
+    
     std::string get_var(const std::string& name);
 
-    Tcl_Interp *get() const
-    {
-        return interp_;
-    }
+    void trace_var(const std::string& name, std::function<void(const std::string&)> callback);
 
-    void register_void_callback(const std::string& name, std::function<void()> callback)
-    {
-        void_callback_map_[name] = callback;
-
-        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-            auto* self = static_cast<Interpreter*>(client_data);
-            auto it = self->void_callback_map_.find(argv[0]);
-            if (it != self->void_callback_map_.end()) 
-            {
-                it->second();
-            }
-            return TCL_OK;
-        }, this, nullptr);        
-    }
-
-    void register_double_callback(const std::string& name, std::function<void(const double&)> callback)
-    {
-        double_callback_map_[name] = callback;
-
-        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-
-            auto* self = static_cast<Interpreter*>(client_data);
-            auto it = self->double_callback_map_.find(argv[0]);
-            if (it != self->double_callback_map_.end()) 
-            {
-                it->second(safe_stod(argv[1]));
-            }
-            return TCL_OK;
-        }, this, nullptr);        
-    }    
-
-    void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback)
-    {
-        string_callback_map_[name] = callback;
-
-        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-            auto* self = static_cast<Interpreter*>(client_data);
-            auto it = self->string_callback_map_.find(argv[0]);
-            if (it != self->string_callback_map_.end()) 
-            {
-                it->second(argv[1]);
-            }
-            return TCL_OK;
-        }, this, nullptr);        
-    } 
-
-    void register_event_callback(const std::string& name, std::function<void(const Event&)> callback) 
-    {
-        event_callback_map_[name] = callback;
-
-        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-            auto* self = static_cast<Interpreter*>(client_data);
-            auto it = self->event_callback_map_.find(argv[0]);
-
-            if (it != self->event_callback_map_.end()) 
-            {
-                Event e;
-                e.x         = safe_stol(argv[1]);
-                e.y         = safe_stol(argv[2]);
-                e.x_root    = safe_stol(argv[3]);
-                e.y_root    = safe_stol(argv[4]);
-                e.widget    = argv[5];
-                e.keysym    = argv[6];
-                e.keycode   = safe_stol(argv[7]);
-                e.character = argv[8];
-                e.type      = argv[9];
-                it->second(e);
-            }
-
-            return TCL_OK;
-
-        }, this, nullptr);
-    }
+    void register_void_callback(const std::string& name, std::function<void()> callback);
+    
+    void register_double_callback(const std::string& name, std::function<void(const double&)> callback);
+    
+    void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback);
+    
+    void register_event_callback(const std::string& name, std::function<void(const Event&)> callback);
 
 private:
     std::unordered_map<std::string, std::function<void(const Event&)>>          event_callback_map_;
+
     std::unordered_map<std::string, std::function<void()>>                      void_callback_map_;
+
     std::unordered_map<std::string, std::function<void(const double&)>>         double_callback_map_;
+
     std::unordered_map<std::string, std::function<void(const std::string&)>>    string_callback_map_;
+
     Tcl_Interp* interp_;
-
-    static long safe_stol(const char* s)
-    {
-        if (!s || *s == '\0' || std::strcmp(s, "??") == 0) 
-            return 0;
-
-        char* endptr = nullptr;
-        int ret = std::strtol(s, &endptr, 10);
-
-        if (endptr == s || *endptr != '\0') 
-            return 0;
-
-        return ret;
-    }
-
-    static double safe_stod(const char* s)
-    {
-        if (!s || *s == '\0' || std::strcmp(s, "??") == 0) 
-            return 0.0;
-
-        char* endptr = nullptr;
-        double ret = std::strtod(s, &endptr);
-
-        if (endptr == s || *endptr != '\0') 
-            return 0.0;
-
-        return ret;
-    }
-
 };
-
-std::unordered_map<std::thread::id, Interpreter*> interp_map;
 
 class Object
 {
+
 public:
     const std::string id;
-    Object()
-        : id(next())
-    {}
+
+    Object();
 
 private:
-    static std::string next()
-    {
-        static std::uint64_t count = 0;
-        return std::to_string(count++);
-    }
+
+    static std::string next();
+
+};
+
+class StringVar : public Object
+{
+
+public:
+
+    StringVar(Interpreter *interp);
+
+    void set(const std::string &value);
+
+    std::string get() const;
+
+    void trace(std::function<void(const std::string&)> callback);
+
+    const std::string& name() const;
+
+private:
+
+    Interpreter *interp_;
+
+    std::string name_;
+
 };
 
 class Widget : public Object
 {
+
 public:
 
-    Widget(Widget *parent, const std::string &type, const std::string& name="")
-        : interp_(parent != nullptr ? parent->interp_ : new Interpreter())
-        , after_id_(0)
-    {
-        if (parent != nullptr)
-        {
-            full_name_ = parent->full_name() + "." + (name.empty() ? type : name) + id;
-            interp_->evaluate(type + " " + full_name_);
-        }
-        else
-        {
-            interp_map[std::this_thread::get_id()] = interp_;
-            full_name_ = "";
-        }
-    }
+    Widget(Widget *parent, const std::string &type, const std::string& name="");
 
-    const std::string& full_name() const
-    {
-        return full_name_;
-    }
+    const std::string& full_name() const;
 
-    void pack(const std::string &options = "")
-    {
-        interp_->evaluate("pack " + full_name_ + " " + options);
-    }
+    void pack(const std::string &options = "");
 
-    void grid(const std::string &options = "")
-    {
-        interp_->evaluate("grid " + full_name_ + " " + options);
-    }
+    void grid(const std::string &options = "");
 
-    void place(const std::string &options = "")
-    {
-        interp_->evaluate("place " + full_name_ + " " + options);
-    }
+    void place(const std::string &options = "");
 
-    void config(const std::map<std::string, std::string> &option)
-    {
-        std::ostringstream oss;
-        oss << full_name() << " configure";
-        for (const auto &kv : option)
-        {
-            oss << " -" << kv.first << " " << kv.second;
-        }
-        interp_->evaluate(oss.str());
-    }
+    void config(const std::map<std::string, std::string> &option);
 
-    void bind(const std::string& event, std::function<void(const Event&)> callback)
-    {
-        auto cb_name =  sanitize(full_name()) + "_" + sanitize(event) + "_bind_cb";
-        interp_->register_event_callback(cb_name, callback);
-        auto cmd = "bind " + full_name() + " " + event + " {" + cb_name + " %x %y %X %Y %W %K %k %c %t}";
-        interp_->evaluate(cmd);
-    }
+    void bind(const std::string& event, std::function<void(const Event&)> callback);
 
-    std::string after(const int& ms, std::function<void()> callback)
-    {
-        auto cb_name    = sanitize(full_name()) + "_after_cb_" + std::to_string(after_id_++);
-        interp_->register_void_callback(cb_name, callback);
-        auto cmd        = "after " + std::to_string(ms) + " " + cb_name;
-        auto ok         = false;
-        auto ret        = interp_->evaluate(cmd, &ok);
+    std::string after(const int& ms, std::function<void()> callback);
 
-        if (!ok)
-        {
-            // Todo Error ハンドリング
-        }
+    void after_idle(std::function<void()> callback);
 
-        return ret;
-    }
+    void after_cancel(const std::string& id);
 
-    void after_idle(std::function<void()> callback)
-    {
-        auto cb_name    = sanitize(full_name()) + "_after_idle_cb";
-        interp_->register_void_callback(cb_name, callback);
-        auto cmd        = "after idle " + cb_name;
-        auto ok         = false;
-        auto ret        = interp_->evaluate(cmd, &ok);
-
-        if (!ok)
-        {
-            // Todo Error ハンドリング
-        }
-    }
-
-    void after_cancel(const std::string& id)
-    {
-        interp_->evaluate("after cancel " + id);
-    }
-
-    void destroy()
-    {
-        interp_->evaluate("destroy " + full_name());
-    }
+    void destroy();
 
 protected:
     Interpreter *interp_;
-    std::string full_name_;
-    int         after_id_;       
 
-    static std::string sanitize(const std::string& s) 
-    {
-        std::string ret;
-        for (char c : s) 
-        {
-            ret += std::isalnum(c) ? c : '_';
-        }
-        return ret;
-    }
+    std::string full_name_;
+
+    int         after_id_;       
 };
 
 class Tk : public Widget 
 {
+
 public:
-    Tk()
-        : Widget(nullptr, "", "")
-    {
-        title("tk");
-        geometry("300x300");
-        protocol("WM_DELETE_WINDOW", [this](){quit();});
-    }
 
-    Tk& title(const std::string& title)
-    {
-        interp_->evaluate("wm title . \"" + title + "\"");
-        return *this;
-    }
+    explicit Tk();
 
-    Tk& geometry(const std::string &size)
-    {
-        interp_->evaluate("wm geometry . " + size);
-        return *this;
-    }
+    Tk& title(const std::string& title);
 
-    Tk& protocol(const std::string& name, std::function<void()> handler) 
-    {
-        auto cb_name = "protocol_cb_" + sanitize(name);
-        interp_->register_void_callback(cb_name, handler);
-        interp_->evaluate("wm protocol . " + name + " " + cb_name);
-        return *this;
-    }
+    Tk& geometry(const std::string &size);
 
-    void mainloop() 
-    {
-        interp_->evaluate("vwait forever");
-    }
+    Tk& protocol(const std::string& name, std::function<void()> handler);
 
-    void quit() 
-    {
-        interp_->evaluate("set forever 1");
-    }
+    void mainloop();
+
+    void quit();
+
 };
 
 class Frame : public Widget
 {
+
 public:
-    Frame(Widget *parent)
-        : Widget(parent, "frame", "f")
-    {}
 
-    Frame& width(const int &width)
-    {
-        config({{"width", std::to_string(width)}});
-        return *this;
-    }
+    explicit Frame(Widget *parent);
 
-    Frame& height(const int &height)
-    {
-        config({{"height", std::to_string(height)}});
-        return *this;
-    }
+    Frame& width(const int &width);
+
+    Frame& height(const int &height);
+
 };
 
 class Toplevel : public Widget
 {
+
 public:
-    Toplevel(Widget *interp)
-        : Widget(interp, "toplevel")
-    {
-        protocol("WM_DELETE_WINDOW", [this](){destroy();});
-    }
 
-    Toplevel& title(const std::string &title_text)
-    {
-        interp_->evaluate("wm title " + full_name() + " \"" + title_text + "\"");
-        return *this;
-    }
+    explicit Toplevel(Widget *interp);
 
-    Toplevel& geometry(const std::string &size)
-    {
-        interp_->evaluate("wm geometry " + full_name() + " " + size);
-        return *this;
-    }
+    Toplevel& title(const std::string &title_text);
 
-    Toplevel& protocol(const std::string& name, std::function<void()> handler) 
-    {
-        std::string callback_name = "protocol_cb_" + sanitize(full_name()) + "_" + sanitize(name);
-        interp_->register_void_callback(callback_name, handler);
-        interp_->evaluate("wm protocol " + full_name() + " " + name + " " + callback_name);
-        return *this;
-    }
+    Toplevel& geometry(const std::string &size);
+
+    Toplevel& protocol(const std::string& name, std::function<void()> handler);
+
 };
 
 class Button : public Widget
 {
 
 public:
-    Button(Widget *parent)
-        : Widget(parent, "button", "b")
-    {}
+    explicit Button(Widget *parent);
 
-    Button& text(const std::string& text)
-    {
-        config({{"text", "\"" + text + "\""}});        
-        return *this;
-    }
+    Button& text(const std::string& text);
 
-    Button& command(std::function<void()> callback)
-    {
-        std::string callback_name =  sanitize(full_name()) + "_void_cb";
-        interp_->register_void_callback(callback_name, callback);
-        config({{"command", callback_name}});        
-        return *this;
-    }
+    Button& command(std::function<void()> callback);
+
 };
 
 class Canvas : public Widget
 {
+
 public:
-    Canvas(Widget *widget)
-        : Widget(widget, "canvas", "c")
-    {}
 
-    Canvas &create_line();
+    explicit Canvas(Widget *widget);
 
-    Canvas &create_oval(const int &left, const int &up, const int &right, const int &down)
-    {
-        std::ostringstream oss;
-        oss << full_name()
-            << " " << "create"
-            << " " << "oval"
-            << " " << left
-            << " " << up
-            << " " << right
-            << " " << down
-            << " -fill red -outline green";
-        interp_->evaluate(oss.str());
-        return *this;
-    }
+    std::string create_line();
 
-    Canvas &create_rectangle(const int &left, const int &up, const int &right, const int &down)
-    {
-        std::ostringstream oss;
-        oss << full_name() << " create" << " " << "rectangle" << " " << left << " " << up << " " << right << " " << down << " -fill red -outline green";
-        interp_->evaluate(oss.str());
-        return *this;
-    }
+    std::string create_oval(const int &left, const int &up, const int &right, const int &down);
 
-    Canvas &config(const std::map<std::string, std::string> &option)
-    {
-        std::ostringstream oss;
-        oss << full_name() << " configure";
-        for (const auto &kv : option)
-        {
-            oss << " -" << kv.first << " " << kv.second;
-        }
-        interp_->evaluate(oss.str());
-        return *this;
-    }
+    std::string create_rectangle(const int &left, const int &up, const int &right, const int &down);
 
-    Canvas &width(const int &width)
-    {
-        return config({{"width", std::to_string(width)}});
-    }
+    Canvas& width(const int &width);
 
-    Canvas &height(const int &height)
-    {
-        return config({{"height", std::to_string(height)}});
-    }
-};
+    Canvas& height(const int &height);
 
-class StringVar : public Object
-{
-public:
-    StringVar(Interpreter *interp, const std::string &name = "")
-        : interp_(interp)
-    {
-        name_ = name.empty() ? "var_" + id : name;
-        Tcl_SetVar(interp_->get(), name_.c_str(), "", TCL_GLOBAL_ONLY);
-    }
-
-    void set(const std::string &value)
-    {
-        Tcl_SetVar(interp_->get(), name_.c_str(), value.c_str(), TCL_GLOBAL_ONLY);
-    }
-
-    std::string get() const
-    {
-        const char *val = Tcl_GetVar(interp_->get(), name_.c_str(), TCL_GLOBAL_ONLY);
-        return val ? val : "";
-    }
-
-    const std::string& name() const 
-    { 
-        return name_; 
-    }
-
-private:
-    Interpreter *interp_;
-    std::string name_;
 };
 
 class Entry : public Widget
 {
+
 public:
-    Entry(Widget *parent)
-        : Widget(parent, "entry", "e") 
-        , text_var_(nullptr)
-    {}
 
-    Entry& textvariable(StringVar &var)
-    {
-        text_var_ = &var;
-        config({{"textvariable", var.name()}});
-        return *this;
-    }
+    explicit Entry(Widget *parent);
 
-    Entry& state(const std::string& state)
-    {
-        config({{"state", state}});
-        return *this;
-    }
+    Entry& textvariable(StringVar &var);
 
-    Entry& icursor(const std::string& index)
-    {
-        interp_->evaluate(full_name() + " icursor " + index);
-        return *this;
-    }
+    Entry& state(const std::string& state);
 
-    Entry& insert(const std::string& index, const std::string& text) 
-    {
-        interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
-        return *this;
-    }
+    Entry& icursor(const std::string& index);
 
-    int index(const std::string& index = "insert") const 
-    {
-        auto ok     = false;
-        auto ret    = interp_->evaluate(full_name() + " index " + index, &ok);
-        if (!ok) 
-        {
-            return -1;
-        }
-        return std::stol(ret);
-    }
+    Entry& insert(const std::string& index, const std::string& text);
 
-    Entry& erase(const std::string& start, const std::string& end = "") 
-    {
-        auto cmd = full_name() + " delete " + start;
-        if (!end.empty()) 
-        {
-            cmd += " " + end;
-        }
-        interp_->evaluate(cmd);
-        return *this;
-    }
+    int index(const std::string& index = "insert") const;
 
-    Entry& set(const std::string& value) 
-    {
-        if (text_var_)
-        {
-            text_var_->set(value);
-            return *this;
-        }
+    Entry& erase(const std::string& start, const std::string& end = "");
 
-        erase("0", "end");
-        insert("0", value);
-        return *this;
-    }
+    Entry& set(const std::string& value);
 
-    std::string get() const
-    {
-        if (text_var_)
-        {
-            return text_var_->get();
-        }
-
-        auto ok     = false;
-        auto ret    = interp_->evaluate(full_name() + " get", &ok);
-        if (!ok) 
-        {
-            // @todo エラーハンドリング
-        }
-        return ret;
-    }
+    std::string get() const;
 
 private:
+
     StringVar* text_var_;
 
 };
 
 class Label : public Widget
 {
-public:
-    Label(Widget *parent)
-        : Widget(parent, "label", "l") {}
 
-    Label &text(const std::string &text)
-    {
-        config({{"text", "\"" +  text + "\""}});
-        return *this;
-    }
+public:
+
+    explicit Label(Widget *parent);
+
+    Label& text(const std::string &text);
 };
 
 class Listbox : public Widget 
@@ -686,107 +325,51 @@ class Listbox : public Widget
 
 public:
 
-    Listbox(Widget* parent)
-        : Widget(parent, "listbox", "listbox") 
-    {}
+    explicit Listbox(Widget* parent);
 
-    Listbox& insert(int index, const std::string& item) 
-    {
-        interp_->evaluate(full_name() + " insert " + std::to_string(index) + " {" + item + "}");
-        return *this;
-    }
+    Listbox& insert(int index, const std::string& item);
 
-    Listbox& erase(int start, int end) 
-    {
-        interp_->evaluate(full_name() + " delete " + std::to_string(start) + " " + std::to_string(end));
-        return *this;
-    }
+    Listbox& erase(int start, int end);
 
-    std::vector<int> curselection() const 
-    {
-        std::string result = interp_->evaluate(full_name() + " curselection");
-        return {}; //parse_indices(result); // "0 2 4" → {0, 2, 4}
-    }
+    std::vector<int> curselection() const;
 
-    std::string get(int index) const {
-        return interp_->evaluate(full_name() + " get " + std::to_string(index));
-    }
+    std::string get(int index) const;
 
-    Listbox& yscrollcommand(const std::string& callback) 
-    {
-        config({{"yscrollcommand", callback}});
-        return *this;
-    }
+    Listbox& yscrollcommand(const std::string& callback);
 
-    Listbox& selectmode(const std::string& mode) 
-    {
-        config({{"selectmode", mode}}); // "single", "browse", "multiple", "extended"
-        return *this;
-    }
+    Listbox& selectmode(const std::string& mode);
+
 };
-
 
 class Scale : public Widget 
 {
 
 public:
-    Scale(Widget* parent)
-        : Widget(parent, "scale", "scale") 
-    {}
-    
-    Scale& from(double val) 
-    { 
-        config({{"from", std::to_string(val)}}); 
-        return *this; 
-    }
 
-    Scale& to(double val)
-    { 
-        config({{"to", std::to_string(val)}}); 
-        return *this; 
-    }
+    explicit Scale(Widget* parent);
 
-    Scale& orient(const std::string& dir) 
-    { 
-        config({{"orient", dir}}); 
-        return *this; 
-    }
+    Scale& from(double val);
 
-    Scale& command(std::function<void(const double&)> callback) 
-    {
-        std::string callback_name = sanitize(full_name()) + "_double_cb";
-        interp_->register_double_callback(callback_name, callback);
-        config({{"command", callback_name}});
-        return *this;
-    }
+    Scale& to(double val);
+
+    Scale& orient(const std::string& dir);
+
+    Scale& command(std::function<void(const double&)> callback);
+
 };
 
 class Scrollbar : public Widget 
 {
+
 public:
-    Scrollbar(Widget* parent) 
-        : Widget(parent, "scrollbar") 
-    {}
 
-    Scrollbar& orient(const std::string& dir) 
-    {
-        config({{"orient", dir}});
-        return *this;
-    }
+    explicit Scrollbar(Widget* parent);
 
-    Scrollbar& command(std::function<void(const std::string&)> callback) 
-    {
-        std::string callback_name = sanitize(full_name()) + "_scroll_cb";
-        interp_->register_string_callback(callback_name, callback);
-        config({{"command", callback_name}});
-        return *this;
-    }
+    Scrollbar& orient(const std::string& dir);
 
-    Scrollbar& set(const std::string& args) 
-    {
-        interp_->evaluate(full_name() + " set " + args);
-        return *this;
-    }
+    Scrollbar& command(std::function<void(const std::string&)> callback);
+
+    Scrollbar& set(const std::string& args);
 
 };
 
@@ -795,46 +378,19 @@ class Text : public Widget
 
 public:
 
-    Text(Widget* parent) 
-        : Widget(parent, "text", "text") 
-    {}
+    explicit Text(Widget* parent);
 
-    Text& insert(const std::string& index, const std::string& text) 
-    {
-        interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
-        return *this;
-    }
+    Text& insert(const std::string& index, const std::string& text);
 
-    std::string get(const std::string& start, const std::string& end = "end") const 
-    {
-        return interp_->evaluate(full_name() + " get " + start + " " + end);
-    }
+    std::string get(const std::string& start, const std::string& end = "end") const ;
 
-    Text& erase(const std::string& start, const std::string& end = "end") 
-    {
-        interp_->evaluate(full_name() + " delete " + start + " " + end);
-        return *this;
-    }
+    Text& erase(const std::string& start, const std::string& end = "end");
 
-    Text& yscrollcommand(std::function<void(std::string)> callback) 
-    {
-        auto cb_name = sanitize(full_name()) + "_string_cb";
-        interp_->register_string_callback(cb_name, callback);        
-        config({{"yscrollcommand", cb_name}});
-        return *this;
-    }
+    Text& yscrollcommand(std::function<void(std::string)> callback);
 
-    Text& yview(const std::string& args) 
-    {
-        interp_->evaluate(full_name() + " yview " + args);
-        return *this;
-    }
+    Text& yview(const std::string& args);
 
-    Text& wrap(const std::string& mode) 
-    {
-        config({{"wrap", mode}});
-        return *this;
-    }
+    Text& wrap(const std::string& mode);
 };
 
 namespace ttk
@@ -844,168 +400,75 @@ class Button : public Widget
 {
 
 public:
-    Button(Widget *parent)
-        : Widget(parent, "ttk::button", "ttk_button")
-    {}
 
-    Button& text(const std::string& text)
-    {
-        config({{"text", "\"" + text + "\""}});        
-        return *this;
-    }
+    explicit Button(Widget *parent);
 
-    Button& command(std::function<void()> callback)
-    {
-        std::string callback_name =  sanitize(full_name()) + "_void_callback";
-        interp_->register_void_callback(callback_name, callback);
-        config({{"command", callback_name}});        
-        return *this;
-    }
+    Button& text(const std::string& text);
+
+    Button& command(std::function<void()> callback);
 };
 
-class Combobox : public Widget {
+class Combobox : public Widget 
+{
+
 public:
-    Combobox(Widget* parent) 
-        : Widget(parent, "ttk::combobox", "ttk_combobox") 
-    {}
 
-    Combobox& values(const std::vector<std::string>& items) 
-    {
-        std::string list = "{";
-        for (const auto& item : items) list += "{" + item + "} ";
-        list += "}";
-        config({{"values", list}});
-        return *this;
-    }
+    explicit Combobox(Widget* parent);
 
-    Combobox& textvariable(const StringVar& var) 
-    {
-        config({{"textvariable", var.name()}});
-        return *this;
-    }
+    Combobox& values(const std::vector<std::string>& items);
+
+    Combobox& textvariable(const StringVar& var);
 };
 
 class Entry : public Widget
 {
+
 public:
-    Entry(Widget *parent)
-        : Widget(parent, "ttk::entry", "ttk_entry") 
-        , text_var_(nullptr)
-    {}
 
-    Entry& textvariable(StringVar &var)
-    {
-        text_var_ = &var;
-        config({{"textvariable", var.name()}});
-        return *this;
-    }
+    explicit Entry(Widget *parent);
 
-    Entry& state(const std::string& state)
-    {
-        config({{"state", state}});
-        return *this;
-    }
+    Entry& textvariable(StringVar &var);
 
-    Entry& icursor(const std::string& index)
-    {
-        interp_->evaluate(full_name() + " icursor " + index);
-        return *this;
-    }
+    Entry& state(const std::string& state);
 
-    Entry& insert(const std::string& index, const std::string& text) 
-    {
-        interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
-        return *this;
-    }
+    Entry& icursor(const std::string& index);
 
-    int index(const std::string& index = "insert") const 
-    {
-        auto ok     = false;
-        auto ret    = interp_->evaluate(full_name() + " index " + index, &ok);
-        if (!ok) 
-        {
-            return -1;
-        }
-        return std::stol(ret);
-    }
+    Entry& insert(const std::string& index, const std::string& text);
 
-    Entry& erase(const std::string& start, const std::string& end = "") 
-    {
-        auto cmd = full_name() + " delete " + start;
-        if (!end.empty()) 
-        {
-            cmd += " " + end;
-        }
-        interp_->evaluate(cmd);
-        return *this;
-    }
+    int index(const std::string& index = "insert") const;
 
-    Entry& set(const std::string& value) 
-    {
-        if (text_var_)
-        {
-            text_var_->set(value);
-            return *this;
-        }
+    Entry& erase(const std::string& start, const std::string& end = "");
 
-        erase("0", "end");
-        insert("0", value);
-        return *this;
-    }
+    Entry& set(const std::string& value);
 
-    std::string get() const
-    {
-        if (text_var_)
-        {
-            return text_var_->get();
-        }
-
-        auto ok     = false;
-        auto ret    = interp_->evaluate(full_name() + " get", &ok);
-        if (!ok) 
-        {
-            // @todo エラーハンドリング
-        }
-        return ret;
-    }
+    std::string get() const;
 
 private:
+    
     StringVar* text_var_;
 
 };
 
 class Notebook : public Widget 
 {
+
 public:
-    Notebook(Widget* parent) 
-        : Widget(parent, "ttk::notebook", "ttk_notebook") 
-    {}
+    
+    explicit Notebook(Widget* parent);
 
-    Notebook& add_tab(Widget& child, const std::string& label) 
-    {
-        interp_->evaluate(full_name() + " add " + child.full_name() + " -text {" + label + "}");
-        return *this;
-    }
+    Notebook& add_tab(Widget& child, const std::string& label);
 
-    Notebook& select(int index) 
-    {
-        interp_->evaluate(full_name() + " select " + std::to_string(index));
-        return *this;
-    }
+    Notebook& select(int index);
 };
 
 class Label : public Widget
 {
-public:
-    Label(Widget *parent)
-        : Widget(parent, "ttk::label", "tl") 
-    {}
 
-    Label& text(const std::string &text)
-    {
-        config({{"text", "\"" +  text + "\""}});
-        return *this;
-    }
+public:
+
+    explicit Label(Widget *parent);
+
+    Label& text(const std::string &text);
 };
 
 } // ttk
@@ -1013,77 +476,30 @@ public:
 namespace filedialog
 {
 
-static std::string askopenfile(const std::map<std::string, std::string>& options = {}) 
-{
-    std::string cmd = "tk_getOpenFile";
-    for (const auto& kv : options) 
-    {
-        cmd += " -" + kv.first + " {" + kv.second + "}";
-    }
-    return interp_map[std::this_thread::get_id()]->evaluate(cmd);
-}
+std::string askopenfile(const std::map<std::string, std::string>& options = {});
 
-static std::string asksaveasfilename(const std::map<std::string, std::string>& options = {}) 
-{
-    std::string cmd = "tk_getSaveFile";
-    for (const auto& kv : options) 
-    {
-        cmd += " -" + kv.first + " {" + kv.second + "}";
-    }
-    return interp_map[std::this_thread::get_id()]->evaluate(cmd);
-}
+std::string asksaveasfilename(const std::map<std::string, std::string>& options = {});
 
-static std::string askdirectory(const std::map<std::string, std::string>& options = {}) 
-{
-    std::string cmd = "tk_chooseDirectory";
-    for (const auto& kv : options) 
-    {
-        cmd += " -" + kv.first + " {" + kv.second + "}";
-    }
-    return interp_map[std::this_thread::get_id()]->evaluate(cmd);
-}
+std::string askdirectory(const std::map<std::string, std::string>& options = {});
 
 } // filedialog
 
 namespace messagebox 
 {
 
-std::string showinfo(const std::string& title, const std::string& message) 
-{
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon info -title {" + title + "} -message {" + message + "}");
-}
+std::string showinfo(const std::string& title, const std::string& message);
 
-std::string showwarning(const std::string& title, const std::string& message) 
-{
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon warning -title {" + title + "} -message {" + message + "}");
-}
+std::string showwarning(const std::string& title, const std::string& message);
 
-std::string showerror(const std::string& title, const std::string& message) 
-{
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon error -title {" + title + "} -message {" + message + "}");
-}
+std::string showerror(const std::string& title, const std::string& message);
 
-std::string askquestion(const std::string& title, const std::string& message) 
-{
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type yesno -icon question -title {" + title + "} -message {" + message + "}");
-}
+std::string askquestion(const std::string& title, const std::string& message);
 
-bool askyesno(const std::string& title, const std::string& message) 
-{
-    return askquestion(title, message) == "yes";
-}
+bool askyesno(const std::string& title, const std::string& message);
 
-bool askokcancel(const std::string& title, const std::string& message) 
-{
-    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type okcancel -icon question -title {" + title + "} -message {" + message + "}");
-    return result == "ok";
-}
+bool askokcancel(const std::string& title, const std::string& message);
 
-bool askretrycancel(const std::string& title, const std::string& message) 
-{
-    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type retrycancel -icon warning -title {" + title + "} -message {" + message + "}");
-    return result == "retry";
-}
+bool askretrycancel(const std::string& title, const std::string& message);
 
 } // messagebox
 

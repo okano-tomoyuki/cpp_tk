@@ -1,111 +1,123 @@
 #include <thread>
 #include "cpp_tk.hpp"
-#include "cpp_ttk.hpp"
 
 int main()
 {
-    auto th = std::thread{[](){
-        auto tk         = cpp_tk::Tk();
+    namespace tk            = cpp_tk;
+    namespace ttk           = tk::ttk;
+    namespace filedialog    = tk::filedialog;
+    namespace messagebox    = tk::messagebox;
 
-        auto frame      = cpp_tk::Frame(&tk);
+    auto th = std::thread{[](){
+        auto tk         = tk::Tk();
+
+        auto frame      = tk::Frame(&tk);
         frame
             .pack();
 
-        auto label      = cpp_ttk::Label(&frame);
+        auto label      = ttk::Label(&frame);
         label
             .text("LLLL")
             .pack();
 
-        auto entry      = cpp_ttk::Entry(&frame);
+        auto entry      = ttk::Entry(&frame);
         entry
             .set("Hello World")
             .icursor("5")
             .pack();
 
-        auto listbox    = cpp_tk::Listbox(&frame);
+        auto listbox    = tk::Listbox(&frame);
         listbox
             .insert(0, "Apple")
             .insert(1, "Banana")
             .insert(2, "Cherry")
             .pack();
 
-        auto text       = cpp_tk::Text(&frame);
+        auto text       = tk::Text(&frame);
         text.pack(" -side left -fill both -expand true");
 
-        auto scrollbar  = cpp_tk::Scrollbar(&frame);
-        scrollbar.pack(" -side right -fill y");
+        auto scrollbar  = tk::Scrollbar(&frame);
+        scrollbar
+            .pack(" -side right -fill y");
 
         text.yscrollcommand([&scrollbar](const std::string& arg){
-            scrollbar.set(arg);
+            scrollbar
+                .set(arg);
         });
 
         scrollbar.command([&text](const std::string& arg){
-            text.yview(arg);
+            text
+                .yview(arg);
         });
 
-        auto button     = cpp_ttk::Button(&frame);
+        auto button     = ttk::Button(&frame);
         button
             .text("Click Me")
             .command([&text](){ 
-                auto file = cpp_tk::filedialog::askopenfile();
-                text.insert(cpp_tk::END, file);
+                auto file = filedialog::askopenfile();
+                text.insert(tk::END, file);
                 std::cout << file << std::endl;
             })
             .pack();
 
-        auto toplevel   = cpp_tk::Toplevel(&tk);
+        auto toplevel   = tk::Toplevel(&tk);
         toplevel
             .title("Sub Window")
             .geometry("400x300");
 
-        auto canvas     = cpp_tk::Canvas(&toplevel);
+        auto canvas     = tk::Canvas(&toplevel);
         canvas
             .width(100)
             .height(100)
             .pack();
         
-            canvas.create_rectangle(10, 10, 30, 30);
+        canvas
+            .create_rectangle(10, 10, 30, 30);
 
         int total_px    = 0;
         
         auto after_func = [&canvas, &total_px](){
-            std::cout << "after" << std::endl;
             total_px += 100;
             canvas.create_oval(total_px, total_px, total_px+100, total_px+100);
         };
 
         canvas.after(1000, after_func);
 
-        auto notebook   = cpp_ttk::Notebook(&toplevel);
+        auto notebook   = ttk::Notebook(&toplevel);
         notebook.pack();
 
-        auto page1      = cpp_tk::Frame(&notebook);
+        auto page1      = tk::Frame(&notebook);
         page1
             .width(200)
             .height(200)
             .pack();
 
-        auto button_p1  = cpp_tk::Button(&page1);
+        auto button_p1  = ttk::Button(&page1);
         button_p1
             .text("Button1")
+            .command([](){
+                messagebox::showinfo("Title", "Message");
+                messagebox::showwarning("Title", "Message");
+                messagebox::showerror("Title", "Message");
+            })
             .pack();
 
-        auto page2      = cpp_tk::Frame(&notebook);
+        auto page2      = tk::Frame(&notebook);
         page2
             .width(200)
             .height(200)
             .pack();
 
-        auto combo_p2   = cpp_ttk::Combobox(&page2);
+        auto combo_p2   = ttk::Combobox(&page2);
         combo_p2
             .values({"AAA", "BBB", "CCC"})
             .pack();
 
-        auto scale_p2   = cpp_tk::Scale(&page2);
+        auto scale_p2   = tk::Scale(&page2);
         scale_p2
             .from(1.0)
             .to(10.0)
-            .orient(cpp_tk::HORIZONTAL)
+            .orient(tk::HORIZONTAL)
             .command([](const double& val){
                 std::cout << val << std::endl;
             })
@@ -118,5 +130,6 @@ int main()
     }};
 
     th.join();
+
     return 0;
 }

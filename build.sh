@@ -1,2 +1,2 @@
-cmake -S . -B build -G Ninja -D CMAKE_CXX_COMPILER=g++
+cmake -S . -B build
 cmake --build build
