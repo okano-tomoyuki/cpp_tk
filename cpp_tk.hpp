@@ -155,20 +155,6 @@ public:
 
         Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
 
-            auto safe_stod = [](const char* s)
-            {
-                if (!s || *s == '\0' || std::strcmp(s, "??") == 0) 
-                    return 0.0;
-
-                char* endptr = nullptr;
-                double ret = std::strtod(s, &endptr);
-
-                if (endptr == s || *endptr != '\0') 
-                    return 0.0;
-
-                return ret;
-            };
-
             auto* self = static_cast<Interpreter*>(client_data);
             auto it = self->double_callback_map_.find(argv[0]);
             if (it != self->double_callback_map_.end()) 
@@ -199,21 +185,6 @@ public:
         event_callback_map_[name] = callback;
 
         Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-            
-            auto safe_stol = [](const char* s)
-            {
-                if (!s || *s == '\0' || std::strcmp(s, "??") == 0) 
-                    return 0;
-
-                char* endptr = nullptr;
-                int ret = std::strtol(s, &endptr, 10);
-
-                if (endptr == s || *endptr != '\0') 
-                    return 0;
-
-                return ret;
-            };
-            
             auto* self = static_cast<Interpreter*>(client_data);
             auto it = self->event_callback_map_.find(argv[0]);
 
@@ -243,6 +214,35 @@ private:
     std::unordered_map<std::string, std::function<void(const double&)>>         double_callback_map_;
     std::unordered_map<std::string, std::function<void(const std::string&)>>    string_callback_map_;
     Tcl_Interp* interp_;
+
+    static long safe_stol(const char* s)
+    {
+        if (!s || *s == '\0' || std::strcmp(s, "??") == 0) 
+            return 0;
+
+        char* endptr = nullptr;
+        int ret = std::strtol(s, &endptr, 10);
+
+        if (endptr == s || *endptr != '\0') 
+            return 0;
+
+        return ret;
+    }
+
+    static double safe_stod(const char* s)
+    {
+        if (!s || *s == '\0' || std::strcmp(s, "??") == 0) 
+            return 0.0;
+
+        char* endptr = nullptr;
+        double ret = std::strtod(s, &endptr);
+
+        if (endptr == s || *endptr != '\0') 
+            return 0.0;
+
+        return ret;
+    }
+
 };
 
 std::unordered_map<std::thread::id, Interpreter*> interp_map;
@@ -837,6 +837,179 @@ public:
     }
 };
 
+namespace ttk
+{
+
+class Button : public Widget
+{
+
+public:
+    Button(Widget *parent)
+        : Widget(parent, "ttk::button", "ttk_button")
+    {}
+
+    Button& text(const std::string& text)
+    {
+        config({{"text", "\"" + text + "\""}});        
+        return *this;
+    }
+
+    Button& command(std::function<void()> callback)
+    {
+        std::string callback_name =  sanitize(full_name()) + "_void_callback";
+        interp_->register_void_callback(callback_name, callback);
+        config({{"command", callback_name}});        
+        return *this;
+    }
+};
+
+class Combobox : public Widget {
+public:
+    Combobox(Widget* parent) 
+        : Widget(parent, "ttk::combobox", "ttk_combobox") 
+    {}
+
+    Combobox& values(const std::vector<std::string>& items) 
+    {
+        std::string list = "{";
+        for (const auto& item : items) list += "{" + item + "} ";
+        list += "}";
+        config({{"values", list}});
+        return *this;
+    }
+
+    Combobox& textvariable(const StringVar& var) 
+    {
+        config({{"textvariable", var.name()}});
+        return *this;
+    }
+};
+
+class Entry : public Widget
+{
+public:
+    Entry(Widget *parent)
+        : Widget(parent, "ttk::entry", "ttk_entry") 
+        , text_var_(nullptr)
+    {}
+
+    Entry& textvariable(StringVar &var)
+    {
+        text_var_ = &var;
+        config({{"textvariable", var.name()}});
+        return *this;
+    }
+
+    Entry& state(const std::string& state)
+    {
+        config({{"state", state}});
+        return *this;
+    }
+
+    Entry& icursor(const std::string& index)
+    {
+        interp_->evaluate(full_name() + " icursor " + index);
+        return *this;
+    }
+
+    Entry& insert(const std::string& index, const std::string& text) 
+    {
+        interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
+        return *this;
+    }
+
+    int index(const std::string& index = "insert") const 
+    {
+        auto ok     = false;
+        auto ret    = interp_->evaluate(full_name() + " index " + index, &ok);
+        if (!ok) 
+        {
+            return -1;
+        }
+        return std::stol(ret);
+    }
+
+    Entry& erase(const std::string& start, const std::string& end = "") 
+    {
+        auto cmd = full_name() + " delete " + start;
+        if (!end.empty()) 
+        {
+            cmd += " " + end;
+        }
+        interp_->evaluate(cmd);
+        return *this;
+    }
+
+    Entry& set(const std::string& value) 
+    {
+        if (text_var_)
+        {
+            text_var_->set(value);
+            return *this;
+        }
+
+        erase("0", "end");
+        insert("0", value);
+        return *this;
+    }
+
+    std::string get() const
+    {
+        if (text_var_)
+        {
+            return text_var_->get();
+        }
+
+        auto ok     = false;
+        auto ret    = interp_->evaluate(full_name() + " get", &ok);
+        if (!ok) 
+        {
+            // @todo エラーハンドリング
+        }
+        return ret;
+    }
+
+private:
+    StringVar* text_var_;
+
+};
+
+class Notebook : public Widget 
+{
+public:
+    Notebook(Widget* parent) 
+        : Widget(parent, "ttk::notebook", "ttk_notebook") 
+    {}
+
+    Notebook& add_tab(Widget& child, const std::string& label) 
+    {
+        interp_->evaluate(full_name() + " add " + child.full_name() + " -text {" + label + "}");
+        return *this;
+    }
+
+    Notebook& select(int index) 
+    {
+        interp_->evaluate(full_name() + " select " + std::to_string(index));
+        return *this;
+    }
+};
+
+class Label : public Widget
+{
+public:
+    Label(Widget *parent)
+        : Widget(parent, "ttk::label", "tl") 
+    {}
+
+    Label& text(const std::string &text)
+    {
+        config({{"text", "\"" +  text + "\""}});
+        return *this;
+    }
+};
+
+} // ttk
+
 namespace filedialog
 {
 
@@ -871,6 +1044,48 @@ static std::string askdirectory(const std::map<std::string, std::string>& option
 }
 
 } // filedialog
+
+namespace messagebox 
+{
+
+std::string showinfo(const std::string& title, const std::string& message) 
+{
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon info -title {" + title + "} -message {" + message + "}");
+}
+
+std::string showwarning(const std::string& title, const std::string& message) 
+{
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon warning -title {" + title + "} -message {" + message + "}");
+}
+
+std::string showerror(const std::string& title, const std::string& message) 
+{
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon error -title {" + title + "} -message {" + message + "}");
+}
+
+std::string askquestion(const std::string& title, const std::string& message) 
+{
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type yesno -icon question -title {" + title + "} -message {" + message + "}");
+}
+
+bool askyesno(const std::string& title, const std::string& message) 
+{
+    return askquestion(title, message) == "yes";
+}
+
+bool askokcancel(const std::string& title, const std::string& message) 
+{
+    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type okcancel -icon question -title {" + title + "} -message {" + message + "}");
+    return result == "ok";
+}
+
+bool askretrycancel(const std::string& title, const std::string& message) 
+{
+    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type retrycancel -icon warning -title {" + title + "} -message {" + message + "}");
+    return result == "retry";
+}
+
+} // messagebox
 
 } // cpp_tk
 
