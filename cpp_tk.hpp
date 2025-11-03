@@ -1,16 +1,10 @@
 #ifndef CPP_TK_HPP
 #define CPP_TK_HPP
 
-#include <tk.h>
-#include <tcl.h>
-#include <cstring>
 #include <string>
-#include <sstream>
-#include <iostream>
 #include <functional>
 #include <map>
 #include <unordered_map>
-#include <thread>
 #include <vector>
 
 namespace cpp_tk
@@ -128,7 +122,8 @@ private:
 
     std::unordered_map<std::string, std::function<void(const std::string&)>>    string_callback_map_;
 
-    Tcl_Interp* interp_;
+    class Impl;
+    Impl* impl_;
 };
 
 class Object

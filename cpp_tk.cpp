@@ -1,7 +1,6 @@
 #include <cstring>
 #include <string>
 #include <sstream>
-#include <iostream>
 #include <functional>
 #include <map>
 #include <unordered_map>
@@ -61,43 +60,55 @@ namespace cpp_tk
 
 std::unordered_map<std::thread::id, Interpreter*> interp_map;
 
-Interpreter::Interpreter()
+class Interpreter::Impl
 {
-    interp_ = Tcl_CreateInterp();
-    Tcl_Init(interp_);
-    Tk_Init(interp_);
+public:
+    Tcl_Interp* interp;
+
+    Impl()
+        : interp(nullptr)
+    {}
+};
+
+Interpreter::Interpreter()
+    : impl_(new Impl())
+{
+    impl_->interp = Tcl_CreateInterp();
+    Tcl_Init(impl_->interp);
+    Tk_Init(impl_->interp);
 }
 
 Interpreter::~Interpreter()
 {
-    Tcl_DeleteInterp(interp_);
+    Tcl_DeleteInterp(impl_->interp);
+    delete impl_;
 }
 
 std::string Interpreter::evaluate(const std::string &command, bool* success)
 {
-    int code = Tcl_Eval(interp_, command.c_str());
+    int code = Tcl_Eval(impl_->interp, command.c_str());
     if (success)
     {
         *success = (code == TCL_OK);
     }
-    return Tcl_GetStringResult(interp_);
+    return Tcl_GetStringResult(impl_->interp);
 }
 
 void Interpreter::set_var(const std::string& name, const std::string& value)
 {
-    Tcl_SetVar(interp_, name.c_str(), value.c_str(), TCL_GLOBAL_ONLY);
+    Tcl_SetVar(impl_->interp, name.c_str(), value.c_str(), TCL_GLOBAL_ONLY);
 }
 
 std::string Interpreter::get_var(const std::string& name)
 {
-    const char* val = Tcl_GetVar(interp_, name.c_str(), TCL_GLOBAL_ONLY);
+    const char* val = Tcl_GetVar(impl_->interp, name.c_str(), TCL_GLOBAL_ONLY);
     return val ? val : "";
 }
 
 void Interpreter::trace_var(const std::string& name, std::function<void(const std::string&)> callback)
 {
     string_callback_map_[name] = callback;
-    Tcl_TraceVar(interp_, name.c_str(), TCL_TRACE_WRITES, [](ClientData client_data, Tcl_Interp* interp, const char* name1, const char* name2, int flags) -> char* {
+    Tcl_TraceVar(impl_->interp, name.c_str(), TCL_TRACE_WRITES, [](ClientData client_data, Tcl_Interp* interp, const char* name1, const char* name2, int flags) -> char* {
         auto* self = static_cast<Interpreter*>(client_data);
         auto it = self->string_callback_map_.find(name1);
         if (it != self->string_callback_map_.end()) {
@@ -111,7 +122,7 @@ void Interpreter::trace_var(const std::string& name, std::function<void(const st
 void Interpreter::register_void_callback(const std::string& name, std::function<void()> callback)
 {
     void_callback_map_[name] = callback;
-    Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
         auto* self = static_cast<Interpreter*>(client_data);
         auto it = self->void_callback_map_.find(argv[0]);
         if (it != self->void_callback_map_.end()) 
@@ -125,7 +136,7 @@ void Interpreter::register_void_callback(const std::string& name, std::function<
 void Interpreter::register_double_callback(const std::string& name, std::function<void(const double&)> callback)
 {
     double_callback_map_[name] = callback;
-    Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
         auto* self = static_cast<Interpreter*>(client_data);
         auto it = self->double_callback_map_.find(argv[0]);
         if (it != self->double_callback_map_.end()) 
@@ -139,7 +150,7 @@ void Interpreter::register_double_callback(const std::string& name, std::functio
 void Interpreter::register_string_callback(const std::string& name, std::function<void(const std::string&)> callback)
 {
     string_callback_map_[name] = callback;
-    Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
         auto* self = static_cast<Interpreter*>(client_data);
         auto it = self->string_callback_map_.find(argv[0]);
         if (it != self->string_callback_map_.end()) 
@@ -153,7 +164,7 @@ void Interpreter::register_string_callback(const std::string& name, std::functio
 void Interpreter::register_event_callback(const std::string& name, std::function<void(const Event&)> callback) 
 {
     event_callback_map_[name] = callback;
-    Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
         auto* self = static_cast<Interpreter*>(client_data);
         auto it = self->event_callback_map_.find(argv[0]);
         if (it != self->event_callback_map_.end()) 
