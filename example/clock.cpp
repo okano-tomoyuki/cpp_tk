@@ -1,3 +1,21 @@
+/**
+ * @file clock.cpp
+ * @author okano tomoyuki (okano.development@gmail.com)
+ * @brief アナログ時計のサンプル
+ * 
+ * このサンプルはC++でGUIアプリケーションを作成するためのライブラリ「cpp_tk」を使用しています。
+ * GUI部分のコードはPythonのTkinterに似た構造を持ち、直感的に理解しやすい設計となっています。
+ * アナログ時計を表示し、現在の時刻に合わせて針が動くようにしています。
+ * このサンプルコードを通じて、cpp_tkライブラリの使い方やC++でのGUIアプリケーション開発の基礎を学ぶことができます。
+ * ぜひ参考にして、自分だけのGUIアプリケーションを作成してみてください！
+ * 
+ * @version 0.1
+ * @date 2025-11-05
+ * 
+ * @copyright Copyright (c) 2025
+ * 
+ */
+
 #include <cmath>
 #include <ctime>
 #include <array>
@@ -5,12 +23,12 @@
 
 int main() 
 {
-    const auto WIDTH = 300;
-    const auto HEIGHT = 300;
-    const auto CENTER_X = WIDTH / 2;
-    const auto CENTER_Y = HEIGHT / 2;
-    const auto CLOCK_RADIUS = 100;
-    const auto PI = 3.14159265358979323846;
+    constexpr auto WIDTH = 300;
+    constexpr auto HEIGHT = 300;
+    constexpr auto CENTER_X = WIDTH / 2;
+    constexpr auto CENTER_Y = HEIGHT / 2;
+    constexpr auto CLOCK_RADIUS = 100;
+    constexpr auto PI = 3.14159265358979323846;
 
     namespace tk = cpp_tk;
 
@@ -18,8 +36,10 @@ int main()
     app.title("Clock");
 
     auto canvas = tk::Canvas(&app);
-    canvas.width(WIDTH).height(HEIGHT);
-    canvas.pack();
+    canvas
+        .width(WIDTH)
+        .height(HEIGHT)
+        .pack();
 
     // 時計の外枠
     canvas.create_oval(
