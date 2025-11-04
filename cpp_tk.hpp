@@ -172,15 +172,15 @@ public:
 
     const std::string& full_name() const;
 
-    void pack(const std::string &options = "");
+    Widget& pack(const std::string &options = "");
 
-    void grid(const std::string &options = "");
+    Widget& grid(const std::string &options = "");
 
-    void place(const std::string &options = "");
+    Widget& place(const std::string &options = "");
 
-    void config(const std::map<std::string, std::string> &option);
+    Widget& config(const std::map<std::string, std::string> &option);
 
-    void bind(const std::string& event, std::function<void(const Event&)> callback);
+    Widget& bind(const std::string& event, std::function<void(const Event&)> callback);
 
     std::string after(const int& ms, std::function<void()> callback);
 
@@ -264,11 +264,17 @@ public:
 
     explicit Canvas(Widget *widget);
 
-    std::string create_line();
+    Canvas& itemconfig(const std::string& id_or_tag, const std::map<std::string, std::string>& options);
 
-    std::string create_oval(const int &left, const int &up, const int &right, const int &down);
+    std::string create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options = {});
 
-    std::string create_rectangle(const int &left, const int &up, const int &right, const int &down);
+    std::string create_oval(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options = {});
+
+    std::string create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options = {});
+
+    Canvas& coords(const std::string& id_or_tag, const std::vector<int>& coords);
+
+    Canvas& erase(const std::string& id_or_tag);
 
     Canvas& width(const int &width);
 

@@ -243,22 +243,25 @@ const std::string& Widget::full_name() const
     return full_name_;
 }
 
-void Widget::pack(const std::string &options)
+Widget& Widget::pack(const std::string &options)
 {
     interp_->evaluate("pack " + full_name_ + " " + options);
+    return *this;
 }
 
-void Widget::grid(const std::string &options)
+Widget& Widget::grid(const std::string &options)
 {
     interp_->evaluate("grid " + full_name_ + " " + options);
+    return *this;
 }
 
-void Widget::place(const std::string &options)
+Widget& Widget::place(const std::string &options)
 {
     interp_->evaluate("place " + full_name_ + " " + options);
+    return *this;
 }
 
-void Widget::config(const std::map<std::string, std::string> &option)
+Widget& Widget::config(const std::map<std::string, std::string> &option)
 {
     std::ostringstream oss;
     oss << full_name() << " configure";
@@ -267,14 +270,16 @@ void Widget::config(const std::map<std::string, std::string> &option)
         oss << " -" << kv.first << " " << kv.second;
     }
     interp_->evaluate(oss.str());
+    return *this;
 }
 
-void Widget::bind(const std::string& event, std::function<void(const Event&)> callback)
+Widget& Widget::bind(const std::string& event, std::function<void(const Event&)> callback)
 {
     auto cb_name =  sanitize(full_name()) + "_" + sanitize(event) + "_bind_cb";
     interp_->register_event_callback(cb_name, callback);
     auto cmd = "bind " + full_name() + " " + event + " {" + cb_name + " %x %y %X %Y %W %K %k %c %t}";
     interp_->evaluate(cmd);
+    return *this;
 }
 
 std::string Widget::after(const int& ms, std::function<void()> callback)
@@ -419,30 +424,85 @@ Canvas::Canvas(Widget *widget)
     : Widget(widget, "canvas", "c")
 {}
 
-std::string Canvas::create_line()
+Canvas& Canvas::itemconfig(const std::string& id_or_tag, const std::map<std::string, std::string>& options)
 {
-
+    std::ostringstream oss;
+    oss << full_name() << " itemconfig " << id_or_tag;
+    for (const auto &kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
 }
 
-std::string Canvas::create_oval(const int &left, const int &up, const int &right, const int &down)
+std::string Canvas::create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name()
+        << " " << "create"
+        << " " << "line"
+        << " " << x1
+        << " " << y1
+        << " " << x2
+        << " " << y2;
+    for (const auto &kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    return interp_->evaluate(oss.str());
+}
+
+std::string Canvas::create_oval(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options)
 {
     std::ostringstream oss;
     oss << full_name()
         << " " << "create"
         << " " << "oval"
-        << " " << left
-        << " " << up
-        << " " << right
-        << " " << down
-        << " -fill red -outline green";
+        << " " << x1
+        << " " << y1
+        << " " << x2
+        << " " << y2;
+    for (const auto &kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_rectangle(const int &left, const int &up, const int &right, const int &down)
+std::string Canvas::create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options)
 {
     std::ostringstream oss;
-    oss << full_name() << " create" << " " << "rectangle" << " " << left << " " << up << " " << right << " " << down << " -fill red -outline green";
+    oss << full_name()
+        << " " << "create"
+        << " " << "rectangle"
+        << " " << x1
+        << " " << y1
+        << " " << x2
+        << " " << y2;
+    for (const auto &kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
     return interp_->evaluate(oss.str());
+}
+
+Canvas& Canvas::coords(const std::string& item_id, const std::vector<int>& coords)
+{
+    std::ostringstream oss;
+    oss << full_name() << " coords " << item_id;
+    for (const auto& c : coords)
+    {
+        oss << " " << c;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Canvas& Canvas::erase(const std::string& id_or_tag)
+{
+    interp_->evaluate(full_name() + " delete " + id_or_tag);
+    return *this;
 }
 
 Canvas& Canvas::width(const int &width)
