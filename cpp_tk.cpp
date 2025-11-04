@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <thread>
 #include <vector>
+#include <iostream>
 
 #include <tk.h>
 #include <tcl.h>
@@ -90,6 +91,11 @@ std::string Interpreter::evaluate(const std::string &command, bool* success)
     if (success)
     {
         *success = (code == TCL_OK);
+        
+        if (!*success)
+        {
+            std::cerr << "Tcl Error: " << Tcl_GetStringResult(impl_->interp) << std::endl;
+        }
     }
     return Tcl_GetStringResult(impl_->interp);
 }
@@ -246,7 +252,7 @@ const std::string& Widget::full_name() const
 Widget& Widget::pack(const std::map<std::string, std::string> &options)
 {
     std::ostringstream oss;
-    oss << full_name() << " pack";
+    oss << "pack " << full_name();
     for (const auto& kv : options)
     {
         oss << " -" << kv.first << " " << kv.second;
@@ -258,7 +264,7 @@ Widget& Widget::pack(const std::map<std::string, std::string> &options)
 Widget& Widget::grid(const std::map<std::string, std::string>& options)
 {
     std::ostringstream oss;
-    oss << full_name() << " grid";
+    oss << "grid " << full_name();
     for (const auto& kv : options)
     {
         oss << " -" << kv.first << " " << kv.second;
@@ -270,7 +276,7 @@ Widget& Widget::grid(const std::map<std::string, std::string>& options)
 Widget& Widget::place(const std::map<std::string, std::string> &options)
 {
     std::ostringstream oss;
-    oss << full_name() << " place";
+    oss << "place " << full_name();
     for (const auto& kv : options)
     {
         oss << " -" << kv.first << " " << kv.second;
@@ -289,6 +295,45 @@ Widget& Widget::config(const std::map<std::string, std::string> &option)
     }
     interp_->evaluate(oss.str());
     return *this;
+}
+
+Widget& Widget::grid_rowconfigure(int row, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << "grid rowconfigure " << full_name() << " " << row;
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Widget& Widget::grid_columnconfigure(int column, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << "grid columnconfigure " << full_name() << " " << column;
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+std::string Widget::cget(const std::string& name) const
+{
+    auto cmd = full_name() + " cget -" + name;
+    auto ok  = false;
+    auto ret = interp_->evaluate(cmd, &ok);
+
+    if (!ok)
+    {
+        ret  = "";
+        // Todo Error ハンドリング
+    }
+
+    return ret;
 }
 
 Widget& Widget::bind(const std::string& event, std::function<void(const Event&)> callback)
@@ -423,6 +468,18 @@ Toplevel& Toplevel::protocol(const std::string& name, std::function<void()> hand
 Button::Button(Widget *parent)
     : Widget(parent, "button", "b")
 {}
+
+Button& Button::width(const int& width)
+{
+    config({{"width",  std::to_string(width)}});
+    return *this;
+}
+
+Button& Button::height(const int& height)
+{
+    config({{"height",  std::to_string(height)}});
+    return *this;
+}
 
 Button& Button::text(const std::string& text)
 {
@@ -789,6 +846,18 @@ namespace ttk
 Button::Button(Widget *parent)
     : Widget(parent, "ttk::button", "ttk_button")
 {}
+
+Button& Button::width(const int& width)
+{
+    config({{"width",  std::to_string(width)}});
+    return *this;
+}
+
+Button& Button::height(const int& height)
+{
+    config({{"height",  std::to_string(height)}});
+    return *this;
+}
 
 Button& Button::text(const std::string& text)
 {

@@ -1,4 +1,4 @@
-foreach(src_name sample1 sample2 eyes)
+foreach(src_name sample1 sample2 calculator eyes)
     add_executable(${src_name}
         ${src_name}.cpp
     )

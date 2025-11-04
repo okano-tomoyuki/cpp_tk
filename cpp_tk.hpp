@@ -180,6 +180,12 @@ public:
 
     Widget& config(const std::map<std::string, std::string> &option);
 
+    Widget& grid_rowconfigure(int row, const std::map<std::string, std::string>& options);
+
+    Widget& grid_columnconfigure(int column, const std::map<std::string, std::string>& options);
+
+    std::string cget(const std::string& name) const;
+
     Widget& bind(const std::string& event, std::function<void(const Event&)> callback);
 
     std::string after(const int& ms, std::function<void()> callback);
@@ -250,6 +256,10 @@ class Button : public Widget
 
 public:
     explicit Button(Widget *parent);
+
+    Button& width(const int& width);
+
+    Button& height(const int& height);
 
     Button& text(const std::string& text);
 
@@ -411,6 +421,10 @@ class Button : public Widget
 public:
 
     explicit Button(Widget *parent);
+
+    Button& width(const int& width);
+
+    Button& height(const int& height);
 
     Button& text(const std::string& text);
 
