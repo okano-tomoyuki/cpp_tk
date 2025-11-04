@@ -172,11 +172,11 @@ public:
 
     const std::string& full_name() const;
 
-    Widget& pack(const std::string &options = "");
+    Widget& pack(const std::map<std::string, std::string> &options = {});
 
-    Widget& grid(const std::string &options = "");
+    Widget& grid(const std::map<std::string, std::string> &options = {});
 
-    Widget& place(const std::string &options = "");
+    Widget& place(const std::map<std::string, std::string> &options = {});
 
     Widget& config(const std::map<std::string, std::string> &option);
 

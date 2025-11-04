@@ -35,11 +35,11 @@ int main()
             .pack();
 
         auto text       = tk::Text(&frame);
-        text.pack(" -side left -fill both -expand true");
+        text.pack({{"side", "left"}, {"fill", "both"}, {"expand", "true"}});
 
         auto scrollbar  = tk::Scrollbar(&frame);
         scrollbar
-            .pack(" -side right -fill y");
+            .pack({{"side", "right"}, {"fill", "y"}});
 
         text.yscrollcommand([&scrollbar](const std::string& arg){
             scrollbar

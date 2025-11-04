@@ -243,21 +243,39 @@ const std::string& Widget::full_name() const
     return full_name_;
 }
 
-Widget& Widget::pack(const std::string &options)
+Widget& Widget::pack(const std::map<std::string, std::string> &options)
 {
-    interp_->evaluate("pack " + full_name_ + " " + options);
+    std::ostringstream oss;
+    oss << full_name() << " pack";
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
     return *this;
 }
 
-Widget& Widget::grid(const std::string &options)
+Widget& Widget::grid(const std::map<std::string, std::string>& options)
 {
-    interp_->evaluate("grid " + full_name_ + " " + options);
+    std::ostringstream oss;
+    oss << full_name() << " grid";
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
     return *this;
 }
 
-Widget& Widget::place(const std::string &options)
+Widget& Widget::place(const std::map<std::string, std::string> &options)
 {
-    interp_->evaluate("place " + full_name_ + " " + options);
+    std::ostringstream oss;
+    oss << full_name() << " place";
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
     return *this;
 }
 
