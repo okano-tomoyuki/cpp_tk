@@ -562,6 +562,22 @@ std::string Canvas::create_rectangle(const int& x1, const int& y1, const int& x2
     return interp_->evaluate(oss.str());
 }
 
+std::string Canvas::create_text(const int& x, const int& y, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name()
+        << " " << "create"
+        << " " << "text"
+        << " " << x
+        << " " << y;
+    for (const auto &kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    return interp_->evaluate(oss.str());
+}
+
+
 Canvas& Canvas::coords(const std::string& item_id, const std::vector<int>& coords)
 {
     std::ostringstream oss;

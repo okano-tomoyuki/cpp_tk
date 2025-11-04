@@ -282,6 +282,8 @@ public:
 
     std::string create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options = {});
 
+    std::string create_text(const int& x, const int& y, const std::map<std::string, std::string>& options = {});
+
     Canvas& move(const std::string& id_or_tag, const int& x, const int& y);
 
     Canvas& moveto(const std::string& id_or_tag, const int& x, const int& y);
