@@ -499,6 +499,30 @@ Canvas& Canvas::coords(const std::string& item_id, const std::vector<int>& coord
     return *this;
 }
 
+Canvas& Canvas::move(const std::string& id_or_tag, const int& x, const int& y)
+{
+    interp_->evaluate(full_name() + " move " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y));
+    return *this;
+}
+
+Canvas& Canvas::moveto(const std::string& id_or_tag, const int& x, const int& y)
+{
+    interp_->evaluate(full_name() + " moveto " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y));
+    return *this;
+}
+
+Canvas& Canvas::scale(const std::string& id_or_tag, const int& x, const int& y, const double& xscale, const double& yscale)
+{
+    interp_->evaluate(full_name() + " scale " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(xscale) + " " + std::to_string(yscale));
+    return *this;
+}
+
+Canvas& Canvas::rotate(const std::string& id_or_tag, const int& x, const int& y, const double& angle)
+{
+    interp_->evaluate(full_name() + " rotate " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(angle));
+    return *this;
+}
+
 Canvas& Canvas::erase(const std::string& id_or_tag)
 {
     interp_->evaluate(full_name() + " delete " + id_or_tag);
