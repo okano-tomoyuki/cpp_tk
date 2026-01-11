@@ -263,6 +263,10 @@ public:
 
     Tk& protocol(const std::string& name, std::function<void()> handler);
 
+    Tk& attributes(const std::string& name, const std::string& value);
+    
+    std::string attributes(const std::string& name) const;
+
     void mainloop();
 
     void quit();
@@ -294,6 +298,10 @@ public:
     Toplevel& geometry(const std::string &size);
 
     Toplevel& protocol(const std::string& name, std::function<void()> handler);
+
+    Toplevel& attributes(const std::string& name, const std::string& value);
+    
+    std::string attributes(const std::string& name) const;
 
 };
 

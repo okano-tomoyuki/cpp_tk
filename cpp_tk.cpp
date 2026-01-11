@@ -603,6 +603,18 @@ Tk& Tk::protocol(const std::string& name, std::function<void()> handler)
     return *this;
 }
 
+Tk& Tk::attributes(const std::string& name, const std::string& value)
+{
+    interp_->evaluate("wm attributes . " + name + " " + value);
+    return *this;
+}
+
+std::string Tk::attributes(const std::string& name) const
+{
+    auto ret = interp_->evaluate("wm attributes . " + name);
+    return ret;
+}
+
 void Tk::mainloop() 
 {
     interp_->evaluate("vwait forever");
@@ -677,6 +689,18 @@ Toplevel& Toplevel::protocol(const std::string& name, std::function<void()> hand
     interp_->register_void_callback(callback_name, handler);
     interp_->evaluate("wm protocol " + full_name() + " " + name + " " + callback_name);
     return *this;
+}
+
+Toplevel& Toplevel::attributes(const std::string& name, const std::string& value)
+{
+    interp_->evaluate("wm attributes " + full_name() + " " + name + " " + value);
+    return *this;
+}
+
+std::string Toplevel::attributes(const std::string& name) const
+{
+    auto ret = interp_->evaluate("wm attributes " + full_name() + " " + name);
+    return ret;
 }
 
 Button::Button(Widget *parent)
