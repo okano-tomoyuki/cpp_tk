@@ -501,6 +501,72 @@ void Widget::destroy()
     interp_->evaluate("destroy " + full_name());
 }
 
+int Widget::winfo_width() const
+{
+    auto ret = interp_->evaluate("winfo width " + full_name());
+    return safe_stol(ret.c_str());
+}
+
+int Widget::winfo_height() const
+{
+    auto ret = interp_->evaluate("winfo height " + full_name());
+    return safe_stol(ret.c_str());
+}
+
+int Widget::winfo_x() const
+{
+    auto ret = interp_->evaluate("winfo x " + full_name());
+    return safe_stol(ret.c_str());
+}
+
+int Widget::winfo_y() const
+{
+    auto ret = interp_->evaluate("winfo y " + full_name());
+    return safe_stol(ret.c_str());
+}
+
+int Widget::winfo_rootx() const
+{
+    auto ret = interp_->evaluate("winfo rootx " + full_name());
+    return safe_stol(ret.c_str());
+}
+
+int Widget::winfo_rooty() const
+{
+    auto ret = interp_->evaluate("winfo rooty " + full_name());
+    return safe_stol(ret.c_str());
+}
+
+bool Widget::winfo_exists() const
+{
+    auto ret = interp_->evaluate("winfo exists " + full_name());
+    return safe_stol(ret.c_str()) != 0;
+}
+
+std::string Widget::winfo_class() const
+{
+    return interp_->evaluate("winfo class " + full_name());
+}
+
+std::string Widget::winfo_toplevel() const
+{
+    return interp_->evaluate("winfo toplevel " + full_name());
+}
+
+std::vector<std::string> Widget::winfo_children() const
+{
+    auto result = interp_->evaluate("winfo children " + full_name());
+
+    std::vector<std::string> children;
+    std::istringstream iss(result);
+    std::string child;
+
+    while (iss >> child)
+        children.push_back(child);
+
+    return children;
+}
+
 Interpreter* Widget::interp()
 {
     return interp_;

@@ -219,6 +219,26 @@ public:
 
     void destroy();
 
+    int winfo_width() const;
+
+    int winfo_height() const;
+
+    int winfo_x() const;
+
+    int winfo_y() const;
+
+    int winfo_rootx() const;
+
+    int winfo_rooty() const;
+
+    bool winfo_exists() const;
+
+    std::string winfo_class() const;
+
+    std::string winfo_toplevel() const;
+
+    std::vector<std::string> winfo_children() const;
+
     Interpreter* interp();
 
 protected:
