@@ -1858,7 +1858,7 @@ Button& Button::font(const Font& font)
 }
 
 Checkbutton::Checkbutton(Widget* parent)
-    : Widget(parent, "ttk::button", "ttk_checkbutton")
+    : Widget(parent, "ttk::checkbutton", "ttk_checkbutton")
 {}
 
 Checkbutton& Checkbutton::text(const std::string& text)
