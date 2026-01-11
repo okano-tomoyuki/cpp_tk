@@ -88,43 +88,8 @@ struct Event
     std::string type;
 };
 
-class Interpreter
-{
-
-public:
-
-    Interpreter();
-    
-    ~Interpreter();
-
-    std::string evaluate(const std::string &command, bool* success = nullptr);
-    
-    void set_var(const std::string& name, const std::string& value);
-    
-    std::string get_var(const std::string& name);
-
-    void trace_var(const std::string& name, std::function<void(const std::string&)> callback);
-
-    void register_void_callback(const std::string& name, std::function<void()> callback);
-    
-    void register_double_callback(const std::string& name, std::function<void(const double&)> callback);
-    
-    void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback);
-    
-    void register_event_callback(const std::string& name, std::function<void(const Event&)> callback);
-
-private:
-    std::unordered_map<std::string, std::function<void(const Event&)>>          event_callback_map_;
-
-    std::unordered_map<std::string, std::function<void()>>                      void_callback_map_;
-
-    std::unordered_map<std::string, std::function<void(const double&)>>         double_callback_map_;
-
-    std::unordered_map<std::string, std::function<void(const std::string&)>>    string_callback_map_;
-
-    class Impl;
-    Impl* impl_;
-};
+class Interpreter;
+class Widget;
 
 class Object
 {
@@ -140,12 +105,34 @@ private:
 
 };
 
-class StringVar : public Object
+class Var : public Object
+{
+
+public:
+    explicit Var(Widget* parent, const std::string& type);
+
+    virtual ~Var() = default;
+
+    const std::string& name() const;
+
+    std::string get_var() const;
+
+    void set_var(const std::string& val);
+
+protected:
+    
+    Interpreter* interp_;
+
+    std::string  name_;
+
+};
+
+class StringVar : public Var
 {
 
 public:
 
-    StringVar(Interpreter *interp);
+    StringVar(Widget* parent);
 
     void set(const std::string &value);
 
@@ -153,13 +140,49 @@ public:
 
     void trace(std::function<void(const std::string&)> callback);
 
-    const std::string& name() const;
+};
 
-private:
+class BooleanVar : public Var 
+{ 
+public:
 
-    Interpreter *interp_;
+    explicit BooleanVar(Widget* parent); 
 
-    std::string name_;
+    void set(bool value); 
+
+    bool get() const; 
+
+    void trace(std::function<void(bool)> callback); 
+
+};
+
+class IntVar : public Var
+{
+
+public:
+
+    IntVar(Widget* parent);
+
+    void set(const int& value);
+
+    int get() const;
+
+    void trace(std::function<void(const int&)> callback);
+
+};
+
+class DoubleVar : public Var
+{
+
+public:
+
+    DoubleVar(Widget* parent);
+
+    void set(const double& value);
+
+    double get() const;
+
+    void trace(std::function<void(const double&)> callback);
 
 };
 
@@ -168,7 +191,7 @@ class Widget : public Object
 
 public:
 
-    Widget(Widget *parent, const std::string &type, const std::string& name="");
+    Widget(Widget* parent, const std::string &type, const std::string& name="");
 
     const std::string& full_name() const;
 
@@ -196,7 +219,10 @@ public:
 
     void destroy();
 
+    Interpreter* interp();
+
 protected:
+
     Interpreter *interp_;
 
     std::string full_name_;
@@ -284,6 +310,24 @@ public:
 
     std::string create_text(const int& x, const int& y, const std::map<std::string, std::string>& options = {});
 
+    std::string create_polygon(const std::vector<int>& coords, const std::map<std::string, std::string>& options = {}); 
+    
+    std::string create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, std::string>& options = {}); 
+    
+    std::string create_image(int x, int y, const std::map<std::string, std::string>& options = {}); 
+    
+    std::string create_window(int x, int y, Widget* widget, const std::map<std::string, std::string>& options = {}); 
+    
+    std::vector<std::string> find_overlapping(int x1, int y1, int x2, int y2) const; 
+    
+    std::vector<std::string> find_closest(int x, int y) const; 
+    
+    Canvas& addtag(const std::string& tag, const std::string& where, const std::string& target); 
+    
+    Canvas& dtag(const std::string& tag, const std::string& target); 
+    
+    std::vector<std::string> gettags(const std::string& id) const;
+
     Canvas& move(const std::string& id_or_tag, const int& x, const int& y);
 
     Canvas& moveto(const std::string& id_or_tag, const int& x, const int& y);
@@ -302,6 +346,21 @@ public:
 
 };
 
+class Checkbutton : public Widget 
+{ 
+
+public: 
+
+    explicit Checkbutton(Widget* parent); 
+    
+    Checkbutton& text(const std::string& text); 
+    
+    Checkbutton& variable(Var* var); 
+    
+    Checkbutton& command(std::function<void()> callback); 
+
+};
+
 class Entry : public Widget
 {
 
@@ -309,7 +368,7 @@ public:
 
     explicit Entry(Widget *parent);
 
-    Entry& textvariable(StringVar &var);
+    Entry& textvariable(Var* var);
 
     Entry& state(const std::string& state);
 
@@ -327,7 +386,7 @@ public:
 
 private:
 
-    StringVar* text_var_;
+    Var* text_var_;
 
 };
 
@@ -359,6 +418,74 @@ public:
     Listbox& yscrollcommand(const std::string& callback);
 
     Listbox& selectmode(const std::string& mode);
+
+};
+
+class Menu : public Widget 
+{ 
+public: 
+
+    explicit Menu(Widget* parent, const std::map<std::string, std::string>& options = {}); 
+    
+    Menu& add_command(const std::map<std::string, std::string>& options); 
+    
+    Menu& add_cascade(const std::map<std::string, std::string>& options); 
+    
+    Menu& add_separator(); Menu& delete_item(const std::string& index); 
+
+}; 
+
+class Menubutton : public Widget 
+{ 
+    
+public: 
+
+    explicit Menubutton(Widget* parent); 
+    
+    Menubutton& menu(Menu* menu); 
+
+};
+
+class Message : public Widget 
+{ 
+    
+public: 
+
+    explicit Message(Widget* parent);
+    
+    Message& text(const std::string& text); 
+
+};
+
+class PanedWindow : public Widget 
+{ 
+    
+public: 
+
+    explicit PanedWindow(Widget* parent); 
+    
+    PanedWindow& orient(const std::string& dir); 
+    
+    PanedWindow& add(Widget* child, const std::map<std::string, std::string>& options = {}); 
+    
+    PanedWindow& forget(Widget* child); 
+
+};
+
+class Radiobutton : public Widget 
+{ 
+    
+public: 
+
+    explicit Radiobutton(Widget* parent); 
+    
+    Radiobutton& text(const std::string& text); 
+    
+    Radiobutton& variable(Var* var); 
+    
+    Radiobutton& value(const std::string& val); 
+    
+    Radiobutton& command(std::function<void()> callback); 
 
 };
 
@@ -394,6 +521,25 @@ public:
 
 };
 
+class Spinbox : public Widget 
+{ 
+    
+public: 
+
+    explicit Spinbox(Widget* parent); 
+    
+    Spinbox& from(double val); 
+    
+    Spinbox& to(double val); 
+    
+    Spinbox& increment(double val); 
+    
+    Spinbox& textvariable(Var* var); 
+    
+    Spinbox& command(std::function<void()> callback); 
+
+};
+
 class Text : public Widget 
 {
 
@@ -412,10 +558,53 @@ public:
     Text& yview(const std::string& args);
 
     Text& wrap(const std::string& mode);
+
+    Text& tag_add(const std::string& tag, const std::string& start, const std::string& end); 
+
+    Text& tag_remove(const std::string& tag, const std::string& start, const std::string& end); 
+
+    Text& tag_config(const std::string& tag, const std::map<std::string, std::string>& options);
+
+    Text& mark_set(const std::string& mark, const std::string& index); 
+    
+    Text& mark_unset(const std::string& mark);
+
+    std::string search(const std::string& pattern, const std::string& index, const std::map<std::string, std::string>& options = {});
+
 };
 
 namespace ttk
 {
+
+class Font : public Object
+{
+public:
+
+    explicit Font(Widget* parent, const std::map<std::string, std::string>& option = {});
+
+    Font& config(const std::map<std::string, std::string>& option);
+
+    Font& size(const int& size);
+
+    Font& weight(const std::string& weight);
+
+    Font& family(const std::string& family);
+
+    Font& slant(const std::string& slant);
+
+    Font& underline(const int& underline);
+
+    Font& overstrike(const int& overstrike);
+
+    const std::string& name() const;
+
+private:
+
+    Interpreter*    interp_;
+
+    std::string     name_;
+
+};
 
 class Button : public Widget
 {
@@ -431,6 +620,8 @@ public:
     Button& text(const std::string& text);
 
     Button& command(std::function<void()> callback);
+
+    Button& font(const Font& font);
 };
 
 class Combobox : public Widget 
@@ -442,7 +633,21 @@ public:
 
     Combobox& values(const std::vector<std::string>& items);
 
-    Combobox& textvariable(const StringVar& var);
+    Combobox& textvariable(Var* var);
+
+    Combobox& width(const int& width);
+
+    Combobox& height(const int& height);
+
+    Combobox& justify(const std::string& justify);
+
+    Combobox& state(const std::string& state);
+
+    Combobox& font(const Font& font);
+
+private:
+
+    Var* text_var_;
 };
 
 class Entry : public Widget
@@ -452,7 +657,7 @@ public:
 
     explicit Entry(Widget *parent);
 
-    Entry& textvariable(StringVar &var);
+    Entry& textvariable(Var* var);
 
     Entry& state(const std::string& state);
 
@@ -468,9 +673,11 @@ public:
 
     std::string get() const;
 
+    Entry& font(const Font& font);
+
 private:
     
-    StringVar* text_var_;
+    Var* text_var_;
 
 };
 
@@ -494,9 +701,71 @@ public:
     explicit Label(Widget *parent);
 
     Label& text(const std::string &text);
+
+    Label& anchor(const std::string& anchor);
+
+    Label& relief(const std::string& relief);
+
+    Label& font(const Font& font);
+};
+
+class Labelframe : public Widget
+{
+public:
+    explicit Labelframe(Widget* parent);
+
+    Labelframe& text(const std::string& text);
+};
+
+class Progressbar : public Widget
+{
+public:
+    explicit Progressbar(Widget* parent);
+
+    Progressbar& mode(const std::string& mode);
+    Progressbar& value(double v);
+    Progressbar& start(int interval = 50);
+    Progressbar& stop();
+    Progressbar& step(double amount = 1.0);
+};
+
+class Separator : public Widget
+{
+public:
+    explicit Separator(Widget* parent);
+};
+
+
+class Sizegrip : public Widget
+{
+public:
+    explicit Sizegrip(Widget* parent);
+};
+
+class Treeview : public Widget
+{
+public:
+    explicit Treeview(Widget* parent);
+
+    Treeview& insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, std::string>& options = {});
+
+    Treeview& delete_item(const std::string& iid);
+
+    Treeview& item(const std::string& iid, const std::map<std::string, std::string>& options);
+
+    Treeview& heading(const std::string& column, const std::map<std::string, std::string>& options);
+
+    Treeview& column(const std::string& column, const std::map<std::string, std::string>& options);
+
+    std::vector<std::string> selection() const;
 };
 
 } // ttk
+
+namespace colorchooser
+{
+    std::string askcolor(const std::map<std::string, std::string>& options = {});
+} // colorchooser
 
 namespace filedialog
 {
