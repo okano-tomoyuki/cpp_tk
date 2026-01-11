@@ -863,7 +863,7 @@ Checkbutton::Checkbutton(Widget* parent)
 
 Checkbutton& Checkbutton::text(const std::string& text)
 {
-    config({{"text", "\"" + text + "\""}});
+    config({{"text", text}});
     return *this;
 }
 
@@ -1046,7 +1046,7 @@ Button& Button::height(const int& height)
 
 Button& Button::text(const std::string& text)
 {
-    config({{"text", "\"" + text + "\""}});        
+    config({{"text", text}});        
     return *this;
 }
 
@@ -1502,7 +1502,7 @@ Message::Message(Widget* parent)
 
 Message& Message::text(const std::string& text)
 {
-    config({{"text", "\"" + text + "\""}});
+    config({{"text", text}});
     return *this;
 }
 
@@ -1540,7 +1540,7 @@ Radiobutton::Radiobutton(Widget* parent)
 
 Radiobutton& Radiobutton::text(const std::string& text)
 {
-    config({{"text", "\"" + text + "\""}});
+    config({{"text", text}});
     return *this;
 }
 
@@ -1595,7 +1595,7 @@ Scale& Scale::command(std::function<void(const double&)> callback)
 }
 
 Scrollbar::Scrollbar(Widget* parent) 
-    : Widget(parent, "scrollbar") 
+    : Widget(parent, "scrollbar", "scrollbar") 
 {}
 
 Scrollbar& Scrollbar::orient(const std::string& dir) 
@@ -1619,7 +1619,7 @@ Scrollbar& Scrollbar::set(const std::string& args)
 }
 
 Spinbox::Spinbox(Widget* parent)
-    : Widget(parent, "spinbox", "sp")
+    : Widget(parent, "spinbox", "spinbox")
 {}
 
 Spinbox& Spinbox::from(double val)
@@ -1839,7 +1839,7 @@ Button& Button::height(const int& height)
 
 Button& Button::text(const std::string& text)
 {
-    config({{"text", "\"" + text + "\""}});        
+    config({{"text", text}});        
     return *this;
 }
 
@@ -1855,6 +1855,30 @@ Button& Button::font(const Font& font)
 {
     config({{"font", font.name()}});
     return *this;    
+}
+
+Checkbutton::Checkbutton(Widget* parent)
+    : Widget(parent, "ttk::button", "ttk_checkbutton")
+{}
+
+Checkbutton& Checkbutton::text(const std::string& text)
+{
+    config({{"text", text}});
+    return *this;
+}
+
+Checkbutton& Checkbutton::variable(Var* var)
+{
+    config({{"variable", var->name()}});
+    return *this;
+}
+
+Checkbutton& Checkbutton::command(std::function<void()> callback)
+{
+    auto cb = sanitize(full_name()) + "_chk_cb";
+    interp_->register_void_callback(cb, callback);
+    config({{"command", cb}});
+    return *this;
 }
 
 Combobox::Combobox(Widget* parent) 
@@ -1989,6 +2013,22 @@ std::string Entry::get() const
     return ret;
 }
 
+Frame::Frame(Widget *parent)
+    : Widget(parent, "ttk::frame", "ttk_frame")
+{}
+
+Frame& Frame::width(const int &width)
+{
+    config({{"width", std::to_string(width)}});
+    return *this;
+}
+
+Frame& Frame::height(const int &height)
+{
+    config({{"height", std::to_string(height)}});
+    return *this;
+}
+
 Label::Label(Widget *parent)
     : Widget(parent, "ttk::label", "tl") 
 {}
@@ -2023,7 +2063,7 @@ Labelframe::Labelframe(Widget* parent)
 
 Labelframe& Labelframe::text(const std::string& text)
 {
-    config({{"text", "\"" + text + "\""}});
+    config({{"text", text}});
     return *this;
 }
 
@@ -2077,9 +2117,129 @@ Progressbar& Progressbar::step(double amount)
     return *this;
 }
 
-Separator::Separator(Widget* parent)
-    : Widget(parent, "ttk::separator", "ttk_sep") 
+Radiobutton::Radiobutton(Widget* parent)
+    : Widget(parent, "ttk::radiobutton", "ttk_radiobutton")
 {}
+
+Radiobutton& Radiobutton::text(const std::string& text)
+{
+    config({{"text", text}});
+    return *this;
+}
+
+Radiobutton& Radiobutton::variable(Var* var)
+{
+    config({{"variable", var->name()}});
+    return *this;
+}
+
+Radiobutton& Radiobutton::value(const std::string& val)
+{
+    config({{"value", "\"" + val + "\""}});
+    return *this;
+}
+
+Radiobutton& Radiobutton::command(std::function<void()> callback)
+{
+    auto cb = sanitize(full_name()) + "_rb_cb";
+    interp_->register_void_callback(cb, callback);
+    config({{"command", cb}});
+    return *this;
+}
+
+Separator::Separator(Widget* parent)
+    : Widget(parent, "ttk::separator", "ttk_separator") 
+{}
+
+Scale::Scale(Widget* parent)
+    : Widget(parent, "ttk::scale", "ttk_scale") 
+{}
+    
+Scale& Scale::from(double val) 
+{ 
+    config({{"from", std::to_string(val)}}); 
+    return *this; 
+}
+
+Scale& Scale::to(double val)
+{ 
+    config({{"to", std::to_string(val)}}); 
+    return *this; 
+}
+
+Scale& Scale::orient(const std::string& dir) 
+{ 
+    config({{"orient", dir}}); 
+    return *this; 
+}
+
+Scale& Scale::command(std::function<void(const double&)> callback) 
+{
+    std::string callback_name = sanitize(full_name()) + "_double_cb";
+    interp_->register_double_callback(callback_name, callback);
+    config({{"command", callback_name}});
+    return *this;
+}
+
+Scrollbar::Scrollbar(Widget* parent) 
+    : Widget(parent, "ttk::scrollbar", "ttk_scrollbar") 
+{}
+
+Scrollbar& Scrollbar::orient(const std::string& dir) 
+{
+    config({{"orient", dir}});
+    return *this;
+}
+
+Scrollbar& Scrollbar::command(std::function<void(const std::string&)> callback) 
+{
+    std::string callback_name = sanitize(full_name()) + "_scroll_cb";
+    interp_->register_string_callback(callback_name, callback);
+    config({{"command", callback_name}});
+    return *this;
+}
+
+Scrollbar& Scrollbar::set(const std::string& args) 
+{
+    interp_->evaluate(full_name() + " set " + args);
+    return *this;
+}
+
+Spinbox::Spinbox(Widget* parent)
+    : Widget(parent, "ttk::spinbox", "ttk_spinbox")
+{}
+
+Spinbox& Spinbox::from(double val)
+{
+    config({{"from", std::to_string(val)}});
+    return *this;
+}
+
+Spinbox& Spinbox::to(double val)
+{
+    config({{"to", std::to_string(val)}});
+    return *this;
+}
+
+Spinbox& Spinbox::increment(double val)
+{
+    config({{"increment", std::to_string(val)}});
+    return *this;
+}
+
+Spinbox& Spinbox::textvariable(Var* var)
+{
+    config({{"textvariable", var->name()}});
+    return *this;
+}
+
+Spinbox& Spinbox::command(std::function<void()> callback)
+{
+    auto cb = sanitize(full_name()) + "_sp_cb";
+    interp_->register_void_callback(cb, callback);
+    config({{"command", cb}});
+    return *this;
+}
 
 Sizegrip::Sizegrip(Widget* parent)
     : Widget(parent, "ttk::sizegrip", "ttk_sizegrip")

@@ -760,6 +760,22 @@ public:
     Button& command(std::function<void()> callback);
 
     Button& font(const Font& font);
+
+};
+
+class Checkbutton : public Widget 
+{ 
+
+public: 
+
+    explicit Checkbutton(Widget* parent); 
+    
+    Checkbutton& text(const std::string& text); 
+    
+    Checkbutton& variable(Var* var); 
+    
+    Checkbutton& command(std::function<void()> callback); 
+
 };
 
 class Combobox : public Widget 
@@ -819,6 +835,19 @@ private:
 
 };
 
+class Frame : public Widget
+{
+
+public:
+
+    explicit Frame(Widget *parent);
+
+    Frame& width(const int &width);
+
+    Frame& height(const int &height);
+
+};
+
 class Notebook : public Widget 
 {
 
@@ -861,10 +890,32 @@ public:
     explicit Progressbar(Widget* parent);
 
     Progressbar& mode(const std::string& mode);
+
     Progressbar& value(double v);
+
     Progressbar& start(int interval = 50);
+
     Progressbar& stop();
+
     Progressbar& step(double amount = 1.0);
+
+};
+
+class Radiobutton : public Widget 
+{ 
+    
+public: 
+
+    explicit Radiobutton(Widget* parent); 
+    
+    Radiobutton& text(const std::string& text); 
+    
+    Radiobutton& variable(Var* var); 
+    
+    Radiobutton& value(const std::string& val); 
+    
+    Radiobutton& command(std::function<void()> callback); 
+
 };
 
 class Separator : public Widget
@@ -873,6 +924,56 @@ public:
     explicit Separator(Widget* parent);
 };
 
+class Scale : public Widget 
+{
+
+public:
+
+    explicit Scale(Widget* parent);
+
+    Scale& from(double val);
+
+    Scale& to(double val);
+
+    Scale& orient(const std::string& dir);
+
+    Scale& command(std::function<void(const double&)> callback);
+
+};
+
+class Scrollbar : public Widget 
+{
+
+public:
+
+    explicit Scrollbar(Widget* parent);
+
+    Scrollbar& orient(const std::string& dir);
+
+    Scrollbar& command(std::function<void(const std::string&)> callback);
+
+    Scrollbar& set(const std::string& args);
+
+};
+
+class Spinbox : public Widget 
+{ 
+    
+public: 
+
+    explicit Spinbox(Widget* parent); 
+    
+    Spinbox& from(double val); 
+    
+    Spinbox& to(double val); 
+    
+    Spinbox& increment(double val); 
+    
+    Spinbox& textvariable(Var* var); 
+    
+    Spinbox& command(std::function<void()> callback); 
+
+};
 
 class Sizegrip : public Widget
 {
