@@ -61,135 +61,172 @@ namespace cpp_tk
 
 std::unordered_map<std::thread::id, Interpreter*> interp_map;
 
-class Interpreter::Impl
+class Interpreter
 {
+
 public:
-    Tcl_Interp* interp;
 
-    Impl()
-        : interp(nullptr)
-    {}
-};
-
-Interpreter::Interpreter()
-    : impl_(new Impl())
-{
-    impl_->interp = Tcl_CreateInterp();
-    Tcl_Init(impl_->interp);
-    Tk_Init(impl_->interp);
-}
-
-Interpreter::~Interpreter()
-{
-    Tcl_DeleteInterp(impl_->interp);
-    delete impl_;
-}
-
-std::string Interpreter::evaluate(const std::string &command, bool* success)
-{
-    int code = Tcl_Eval(impl_->interp, command.c_str());
-    if (success)
+    Interpreter()
+        : interp_(nullptr)
     {
-        *success = (code == TCL_OK);
-        
-        if (!*success)
-        {
-            std::cerr << "Tcl Error: " << Tcl_GetStringResult(impl_->interp) << std::endl;
-        }
+        interp_ = Tcl_CreateInterp();
+        Tcl_Init(interp_);
+        Tk_Init(interp_);
     }
-    return Tcl_GetStringResult(impl_->interp);
-}
+    
+    ~Interpreter()
+    {
+        Tcl_DeleteInterp(interp_);
+        interp_ = nullptr;
+    }
 
-void Interpreter::set_var(const std::string& name, const std::string& value)
-{
-    Tcl_SetVar(impl_->interp, name.c_str(), value.c_str(), TCL_GLOBAL_ONLY);
-}
-
-std::string Interpreter::get_var(const std::string& name)
-{
-    const char* val = Tcl_GetVar(impl_->interp, name.c_str(), TCL_GLOBAL_ONLY);
-    return val ? val : "";
-}
-
-void Interpreter::trace_var(const std::string& name, std::function<void(const std::string&)> callback)
-{
-    string_callback_map_[name] = callback;
-    Tcl_TraceVar(impl_->interp, name.c_str(), TCL_TRACE_WRITES, [](ClientData client_data, Tcl_Interp* interp, const char* name1, const char* name2, int flags) -> char* {
-        auto* self = static_cast<Interpreter*>(client_data);
-        auto it = self->string_callback_map_.find(name1);
-        if (it != self->string_callback_map_.end()) {
-            const char* val = Tcl_GetVar(interp, name1, TCL_GLOBAL_ONLY);
-            it->second(val ? val : "");
-        }
-        return nullptr;
-    }, this);
-}
-
-void Interpreter::register_void_callback(const std::string& name, std::function<void()> callback)
-{
-    void_callback_map_[name] = callback;
-    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-        auto* self = static_cast<Interpreter*>(client_data);
-        auto it = self->void_callback_map_.find(argv[0]);
-        if (it != self->void_callback_map_.end()) 
+    std::string evaluate(const std::string &command, bool* success = nullptr)
+    {
+        int code = Tcl_Eval(interp_, command.c_str());
+        if (success)
         {
-            it->second();
+            *success = (code == TCL_OK);
+            
+            if (!*success)
+            {
+                std::cerr << "Tcl Error: " << Tcl_GetStringResult(interp_) << std::endl;
+            }
         }
-        return TCL_OK;
-    }, this, nullptr);        
-}
+        return Tcl_GetStringResult(interp_);
+    }
+    
+    void set_var(const std::string& name, const std::string& value)
+    {
+        Tcl_SetVar(interp_, name.c_str(), value.c_str(), TCL_GLOBAL_ONLY);
+    }
+    
+    std::string get_var(const std::string& name)
+    {
+        const char* val = Tcl_GetVar(interp_, name.c_str(), TCL_GLOBAL_ONLY);
+        return val ? val : "";
+    }
 
-void Interpreter::register_double_callback(const std::string& name, std::function<void(const double&)> callback)
-{
-    double_callback_map_[name] = callback;
-    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-        auto* self = static_cast<Interpreter*>(client_data);
-        auto it = self->double_callback_map_.find(argv[0]);
-        if (it != self->double_callback_map_.end()) 
-        {
-            it->second(safe_stod(argv[1]));
-        }
-        return TCL_OK;
-    }, this, nullptr);        
-}    
+    void trace_var(const std::string& name, std::function<void(const std::string&)> callback)
+    {
+        string_callback_map_[name] = callback;
+        Tcl_TraceVar(interp_, name.c_str(), TCL_TRACE_WRITES, [](ClientData client_data, Tcl_Interp* interp, const char* name1, const char* name2, int flags) -> char* {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->string_callback_map_.find(name1);
+            if (it != self->string_callback_map_.end()) {
+                const char* val = Tcl_GetVar(interp, name1, TCL_GLOBAL_ONLY);
+                it->second(val ? val : "");
+            }
+            return nullptr;
+        }, this);
+    }
 
-void Interpreter::register_string_callback(const std::string& name, std::function<void(const std::string&)> callback)
-{
-    string_callback_map_[name] = callback;
-    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-        auto* self = static_cast<Interpreter*>(client_data);
-        auto it = self->string_callback_map_.find(argv[0]);
-        if (it != self->string_callback_map_.end()) 
-        {
-            it->second(argv[1]);
-        }
-        return TCL_OK;
-    }, this, nullptr);        
-} 
+    void trace_var(const std::string& name, std::function<void(const int&)> callback)
+    {
+        int_callback_map_[name] = callback;
+        Tcl_TraceVar(interp_, name.c_str(), TCL_TRACE_WRITES, [](ClientData client_data, Tcl_Interp* interp, const char* name1, const char* name2, int flags) -> char* {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->int_callback_map_.find(name1);
+            if (it != self->int_callback_map_.end()) {
+                const char* val = Tcl_GetVar(interp, name1, TCL_GLOBAL_ONLY);
+                it->second(val ? std::stol(val) : 0);
+            }
+            return nullptr;
+        }, this);
+    }
 
-void Interpreter::register_event_callback(const std::string& name, std::function<void(const Event&)> callback) 
-{
-    event_callback_map_[name] = callback;
-    Tcl_CreateCommand(impl_->interp, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
-        auto* self = static_cast<Interpreter*>(client_data);
-        auto it = self->event_callback_map_.find(argv[0]);
-        if (it != self->event_callback_map_.end()) 
-        {
-            auto e      = Event();
-            e.x         = safe_stol(argv[1]);
-            e.y         = safe_stol(argv[2]);
-            e.x_root    = safe_stol(argv[3]);
-            e.y_root    = safe_stol(argv[4]);
-            e.widget    = argv[5];
-            e.keysym    = argv[6];
-            e.keycode   = safe_stol(argv[7]);
-            e.character = argv[8];
-            e.type      = argv[9];
-            it->second(e);
-        }
-        return TCL_OK;
-    }, this, nullptr);
-}
+    void trace_var(const std::string& name, std::function<void(const double&)> callback)
+    {
+        double_callback_map_[name] = callback;
+        Tcl_TraceVar(interp_, name.c_str(), TCL_TRACE_WRITES, [](ClientData client_data, Tcl_Interp* interp, const char* name1, const char* name2, int flags) -> char* {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->double_callback_map_.find(name1);
+            if (it != self->double_callback_map_.end()) {
+                const char* val = Tcl_GetVar(interp, name1, TCL_GLOBAL_ONLY);
+                it->second(val ? std::stod(val) : 0.0);
+            }
+            return nullptr;
+        }, this);
+    }
+
+    void register_void_callback(const std::string& name, std::function<void()> callback)
+    {
+        void_callback_map_[name] = callback;
+        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->void_callback_map_.find(argv[0]);
+            if (it != self->void_callback_map_.end()) 
+            {
+                it->second();
+            }
+            return TCL_OK;
+        }, this, nullptr); 
+    }
+    
+    void register_double_callback(const std::string& name, std::function<void(const double&)> callback)
+    {
+        double_callback_map_[name] = callback;
+        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->double_callback_map_.find(argv[0]);
+            if (it != self->double_callback_map_.end()) 
+            {
+                it->second(safe_stod(argv[1]));
+            }
+            return TCL_OK;
+        }, this, nullptr); 
+    }
+    
+    void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback)
+    {
+        string_callback_map_[name] = callback;
+        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->string_callback_map_.find(argv[0]);
+            if (it != self->string_callback_map_.end()) 
+            {
+                it->second(argv[1]);
+            }
+            return TCL_OK;
+        }, this, nullptr); 
+    }
+    
+    void register_event_callback(const std::string& name, std::function<void(const Event&)> callback)
+    {
+        event_callback_map_[name] = callback;
+        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->event_callback_map_.find(argv[0]);
+            if (it != self->event_callback_map_.end()) 
+            {
+                auto e      = Event();
+                e.x         = safe_stol(argv[1]);
+                e.y         = safe_stol(argv[2]);
+                e.x_root    = safe_stol(argv[3]);
+                e.y_root    = safe_stol(argv[4]);
+                e.widget    = argv[5];
+                e.keysym    = argv[6];
+                e.keycode   = safe_stol(argv[7]);
+                e.character = argv[8];
+                e.type      = argv[9];
+                it->second(e);
+            }
+            return TCL_OK;
+        }, this, nullptr);
+    }
+
+private:
+    Tcl_Interp* interp_;
+
+    std::unordered_map<std::string, std::function<void(const Event&)>>          event_callback_map_;
+
+    std::unordered_map<std::string, std::function<void()>>                      void_callback_map_;
+
+    std::unordered_map<std::string, std::function<void(const int&)>>            int_callback_map_;
+
+    std::unordered_map<std::string, std::function<void(const double&)>>         double_callback_map_;
+
+    std::unordered_map<std::string, std::function<void(const std::string&)>>    string_callback_map_;
+};
 
 Object::Object()
     : id(next())
@@ -201,9 +238,28 @@ std::string Object::next()
     return std::to_string(count++);
 }
 
-StringVar::StringVar(Interpreter *interp)
-    : interp_(interp)
-    , name_(name_ = "string_var_" + id)
+Var::Var(Widget* parent, const std::string& type)
+    : interp_(parent->interp())
+    , name_(type + "_var_" + id)
+{}
+
+const std::string& Var::name() const
+{
+    return name_;
+}
+
+std::string Var::get_var() const
+{
+    return interp_->get_var(name_);
+}
+
+void Var::set_var(const std::string& value)
+{
+    interp_->set_var(name_, value);
+}
+
+StringVar::StringVar(Widget* parent)
+    : Var(parent, "string")
 {
     interp_->set_var(name_, "");
 }
@@ -223,24 +279,61 @@ void StringVar::trace(std::function<void(const std::string&)> callback)
     interp_->trace_var(name_, callback);
 }
 
-const std::string& StringVar::name() const 
-{ 
-    return name_; 
+IntVar::IntVar(Widget* parent)
+    : Var(parent, "int")
+{
+    interp_->set_var(name_, "0");
+}
+
+void IntVar::set(const int& value)
+{
+    interp_->set_var(name_, std::to_string(value));
+}
+
+int IntVar::get() const
+{
+    return std::stol(interp_->get_var(name_));
+}
+
+void IntVar::trace(std::function<void(const int&)> callback)
+{
+    interp_->trace_var(name_, callback);
+}
+
+DoubleVar::DoubleVar(Widget* parent)
+    : Var(parent, "double")
+{
+    interp_->set_var(name_, "0.0");
+}
+
+void DoubleVar::set(const double& value)
+{
+    interp_->set_var(name_, std::to_string(value));
+}
+
+double DoubleVar::get() const
+{
+    return std::stod(interp_->get_var(name_));
+}
+
+void DoubleVar::trace(std::function<void(const double&)> callback)
+{
+    interp_->trace_var(name_, callback);
 }
 
 Widget::Widget(Widget *parent, const std::string &type, const std::string& name)
-    : interp_(parent != nullptr ? parent->interp_ : new Interpreter())
+    : interp_(parent ? parent->interp_ : nullptr)
     , after_id_(0)
 {
     if (parent != nullptr)
     {
-        full_name_ = parent->full_name() + "." + (name.empty() ? type : name) + id;
+        auto parent_name = (parent->full_name() == ".") ? "" : parent->full_name();
+        full_name_ = parent_name + "." + (name.empty() ? type : name) + id;
         interp_->evaluate(type + " " + full_name_);
     }
     else
     {
-        interp_map[std::this_thread::get_id()] = interp_;
-        full_name_ = "";
+        full_name_ = ".";
     }
 }
 
@@ -385,9 +478,17 @@ void Widget::destroy()
     interp_->evaluate("destroy " + full_name());
 }
 
+Interpreter* Widget::interp()
+{
+    return interp_;
+}
+
 Tk::Tk()
     : Widget(nullptr, "", "")
 {
+    interp_ = new Interpreter();
+    interp_map[std::this_thread::get_id()] = interp_;
+
     title("tk");
     geometry("300x300");
     protocol("WM_DELETE_WINDOW", [this](){quit();});
@@ -577,7 +678,6 @@ std::string Canvas::create_text(const int& x, const int& y, const std::map<std::
     return interp_->evaluate(oss.str());
 }
 
-
 Canvas& Canvas::coords(const std::string& item_id, const std::vector<int>& coords)
 {
     std::ostringstream oss;
@@ -637,10 +737,10 @@ Entry::Entry(Widget *parent)
     , text_var_(nullptr)
 {}
 
-Entry& Entry::textvariable(StringVar &var)
+Entry& Entry::textvariable(Var* var)
 {
-    text_var_ = &var;
-    config({{"textvariable", var.name()}});
+    text_var_ = var;
+    config({{"textvariable", var->name()}});
     return *this;
 }
 
@@ -688,7 +788,7 @@ Entry& Entry::set(const std::string& value)
 {
     if (text_var_)
     {
-        text_var_->set(value);
+        text_var_->set_var(value);
         return *this;
     }
 
@@ -701,7 +801,7 @@ std::string Entry::get() const
 {
     if (text_var_)
     {
-        return text_var_->get();
+        return text_var_->get_var();
     }
 
     auto ok     = false;
@@ -859,6 +959,66 @@ Text& Text::wrap(const std::string& mode)
 namespace ttk
 {
 
+Font::Font(Widget* parent, const std::map<std::string, std::string>& option)
+    : name_("font_" + id)
+    , interp_(parent->interp())
+{
+    interp_->evaluate("font create " + name_);
+}
+
+Font& Font::config(const std::map<std::string, std::string>& option)
+{
+    std::ostringstream oss;
+    oss << "font configure " << name_;
+    for (const auto &kv : option)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Font& Font::size(const int& size)
+{
+    config({{"size", std::to_string(size)}});
+    return *this;
+}
+
+Font& Font::weight(const std::string& weight)
+{
+    config({{"weight", weight}});
+    return *this;
+}
+
+Font& Font::family(const std::string& family)
+{
+    config({{"family",  "\"" + family + "\""}});
+    return *this;
+}
+
+Font& Font::slant(const std::string& slant)
+{
+    config({{"slant", slant}});
+    return *this;
+}
+
+Font& Font::underline(const int& underline)
+{
+    config({{"underline", std::to_string(underline)}});
+    return *this;
+}
+
+Font& Font::overstrike(const int& overstrike)
+{
+    config({{"overstrike", std::to_string(overstrike)}});
+    return *this;
+}
+
+const std::string& Font::name() const
+{
+    return name_;
+}
+
 Button::Button(Widget *parent)
     : Widget(parent, "ttk::button", "ttk_button")
 {}
@@ -889,8 +1049,15 @@ Button& Button::command(std::function<void()> callback)
     return *this;
 }
 
+Button& Button::font(const Font& font)
+{
+    config({{"font", font.name()}});
+    return *this;    
+}
+
 Combobox::Combobox(Widget* parent) 
-    : Widget(parent, "ttk::combobox", "ttk_combobox") 
+    : Widget(parent, "ttk::combobox", "ttk_combobox")
+    , text_var_(nullptr)
 {}
 
 Combobox& Combobox::values(const std::vector<std::string>& items) 
@@ -902,9 +1069,40 @@ Combobox& Combobox::values(const std::vector<std::string>& items)
     return *this;
 }
 
-Combobox& Combobox::textvariable(const StringVar& var) 
+Combobox& Combobox::textvariable(Var* var) 
 {
-    config({{"textvariable", var.name()}});
+    text_var_ = var;
+    config({{"textvariable", var->name()}});
+    return *this;
+}
+
+Combobox& Combobox::width(const int& width)
+{
+    config({{"width", std::to_string(width)}});
+    return *this;
+}
+
+Combobox& Combobox::height(const int& height)
+{
+    config({{"height", std::to_string(height)}});
+    return *this;
+}
+
+Combobox& Combobox::justify(const std::string& justify)
+{
+    config({{"justify", justify}});
+    return *this;
+}
+
+Combobox& Combobox::state(const std::string& state)
+{
+    config({{"state", state}});
+    return *this;
+}
+
+Combobox& Combobox::font(const Font& font)
+{
+    config({{"font", font.name()}});
     return *this;
 }
 
@@ -913,10 +1111,10 @@ Entry::Entry(Widget *parent)
     , text_var_(nullptr)
 {}
 
-Entry& Entry::textvariable(StringVar &var)
+Entry& Entry::textvariable(Var* var)
 {
-    text_var_ = &var;
-    config({{"textvariable", var.name()}});
+    text_var_ = var;
+    config({{"textvariable", var->name()}});
     return *this;
 }
 
@@ -964,7 +1162,7 @@ Entry& Entry::set(const std::string& value)
 {
     if (text_var_)
     {
-        text_var_->set(value);
+        text_var_->set_var(value);
         return *this;
     }
 
@@ -977,7 +1175,7 @@ std::string Entry::get() const
 {
     if (text_var_)
     {
-        return text_var_->get();
+        return text_var_->get_var();
     }
 
     auto ok     = false;
@@ -996,6 +1194,24 @@ Label::Label(Widget *parent)
 Label& Label::text(const std::string &text)
 {
     config({{"text", "\"" +  text + "\""}});
+    return *this;
+}
+
+Label& Label::anchor(const std::string& anchor)
+{
+    config({{"anchor", anchor}});
+    return *this;
+}
+
+Label& Label::relief(const std::string& relief)
+{
+    config({{"relief", relief}});
+    return *this;
+}
+
+Label& Label::font(const Font& font)
+{
+    config({{"font", font.name()}});
     return *this;
 }
 
