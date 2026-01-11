@@ -228,6 +228,123 @@ private:
     std::unordered_map<std::string, std::function<void(const std::string&)>>    string_callback_map_;
 };
 
+ArgValue::ArgValue()
+    : type_(ValueType::NONE)
+    , str_(nullptr)
+{}
+
+ArgValue::ArgValue(const std::string& s)
+    : type_(ValueType::STRING)
+    , str_(new std::string(s))
+{}
+
+ArgValue::ArgValue(const char* s)
+    : type_(ValueType::STRING)
+    , str_(new std::string(s))
+{}
+
+ArgValue::ArgValue(int v)
+    : type_(ValueType::INT)
+    , i_(v)
+    , str_(nullptr)
+{}
+
+ArgValue::ArgValue(double v)
+    : type_(ValueType::DOUBLE)
+    , d_(v)
+    , str_(nullptr)
+{}
+
+ArgValue::ArgValue(bool v)
+    : type_(ValueType::BOOL)
+    , b_(v)
+    , str_(nullptr)
+{}
+
+ArgValue::ArgValue(const ArgValue& other)
+    : type_(ValueType::NONE)
+    , str_(nullptr)
+{
+    copy_from(other);
+}
+
+ArgValue& ArgValue::operator=(const ArgValue& other)
+{
+    if (this != &other) 
+    {
+        cleanup();
+        copy_from(other);
+    }
+    return *this;
+}
+
+ArgValue::~ArgValue()
+{
+    cleanup();
+}
+
+ArgValue::ValueType ArgValue::type() const
+{
+    return type_;
+}
+
+std::string ArgValue::to_tcl() const
+{
+    if (type_ == ValueType::STRING) 
+    {
+        return "\"" + *str_ + "\"";
+    }
+    else if (type_ == ValueType::INT) 
+    {
+        return std::to_string(i_);
+    }
+    else if (type_ == ValueType::DOUBLE) 
+    {
+        return std::to_string(d_);
+    }
+    else if (type_ == ValueType::BOOL) 
+    {
+        return b_ ? "1" : "0";
+    }
+    return "";
+}
+
+void ArgValue::cleanup()
+{
+    if (type_ == ValueType::STRING && str_) 
+    {
+        delete str_;
+        str_ = nullptr;
+    }
+    type_ = ValueType::NONE;
+}
+
+void ArgValue::copy_from(const ArgValue& other)
+{
+    type_ = other.type_;
+
+    if (other.type_ == ValueType::STRING) 
+    {
+        str_ = new std::string(*other.str_);
+    }
+    else if (other.type_ == ValueType::INT) 
+    {
+        i_ = other.i_;
+    }
+    else if (other.type_ == ValueType::DOUBLE) 
+    {
+        d_ = other.d_;
+    }
+    else if (other.type_ == ValueType::BOOL) 
+    {
+        b_ = other.b_;
+    }
+    else 
+    {
+        str_ = nullptr;
+    }
+}
+
 Object::Object()
     : id(next())
 {}
@@ -595,12 +712,70 @@ Tk& Tk::geometry(const std::string &size)
     return *this;
 }
 
+std::string Tk::geometry() const
+{
+    return interp_->evaluate("wm geometry .");
+}
+
 Tk& Tk::protocol(const std::string& name, std::function<void()> handler) 
 {
     auto cb_name = "protocol_cb_" + sanitize(name);
     interp_->register_void_callback(cb_name, handler);
     interp_->evaluate("wm protocol . " + name + " " + cb_name);
     return *this;
+}
+
+Tk& Tk::resizable(bool width, bool height)
+{
+    interp_->evaluate("wm resizable . " +
+        std::to_string(width ? 1 : 0) + " " +
+        std::to_string(height ? 1 : 0));
+    return *this;
+}
+
+Tk& Tk::minsize(int width, int height)
+{
+    interp_->evaluate("wm minsize . " +
+        std::to_string(width) + " " +
+        std::to_string(height));
+    return *this;
+}
+
+Tk& Tk::maxsize(int width, int height)
+{
+    interp_->evaluate("wm maxsize . " +
+        std::to_string(width) + " " +
+        std::to_string(height));
+    return *this;
+}
+
+Tk& Tk::iconify()
+{
+    interp_->evaluate("wm iconify .");
+    return *this;
+}
+
+Tk& Tk::deiconify()
+{
+    interp_->evaluate("wm deiconify .");
+    return *this;
+}
+
+Tk& Tk::withdraw()
+{
+    interp_->evaluate("wm withdraw .");
+    return *this;
+}
+
+Tk& Tk::state(const std::string& new_state)
+{
+    interp_->evaluate("wm state . " + new_state);
+    return *this;
+}
+
+std::string Tk::state() const
+{
+    return interp_->evaluate("wm state .");
 }
 
 Tk& Tk::attributes(const std::string& name, const std::string& value)
@@ -611,8 +786,43 @@ Tk& Tk::attributes(const std::string& name, const std::string& value)
 
 std::string Tk::attributes(const std::string& name) const
 {
-    auto ret = interp_->evaluate("wm attributes . " + name);
-    return ret;
+    return interp_->evaluate("wm attributes . " + name);
+}
+
+Tk& Tk::lift()
+{
+    interp_->evaluate("raise .");
+    return *this;
+}
+
+Tk& Tk::lower()
+{
+    interp_->evaluate("lower .");
+    return *this;
+}
+
+Tk& Tk::grab_set()
+{
+    interp_->evaluate("grab set .");
+    return *this;
+}
+
+Tk& Tk::grab_release()
+{
+    interp_->evaluate("grab release .");
+    return *this;
+}
+
+Tk& Tk::iconphoto(const std::string& image_name)
+{
+    interp_->evaluate("wm iconphoto . -default " + image_name);
+    return *this;
+}
+
+Tk& Tk::iconbitmap(const std::string& bitmap_path)
+{
+    interp_->evaluate("wm iconbitmap . \"" + bitmap_path + "\"");
+    return *this;
 }
 
 void Tk::mainloop() 
@@ -683,11 +893,40 @@ Toplevel& Toplevel::geometry(const std::string &size)
     return *this;
 }
 
+std::string Toplevel::geometry() const
+{
+    return interp_->evaluate("wm geometry " + full_name());
+}
+
 Toplevel& Toplevel::protocol(const std::string& name, std::function<void()> handler) 
 {
     std::string callback_name = "protocol_cb_" + sanitize(full_name()) + "_" + sanitize(name);
     interp_->register_void_callback(callback_name, handler);
     interp_->evaluate("wm protocol " + full_name() + " " + name + " " + callback_name);
+    return *this;
+}
+
+Toplevel& Toplevel::resizable(bool width, bool height)
+{
+    interp_->evaluate("wm resizable " + full_name() + " " +
+        std::to_string(width ? 1 : 0) + " " +
+        std::to_string(height ? 1 : 0));
+    return *this;
+}
+
+Toplevel& Toplevel::minsize(int width, int height)
+{
+    interp_->evaluate("wm minsize " + full_name() + " " +
+        std::to_string(width) + " " +
+        std::to_string(height));
+    return *this;
+}
+
+Toplevel& Toplevel::maxsize(int width, int height)
+{
+    interp_->evaluate("wm maxsize " + full_name() + " " +
+        std::to_string(width) + " " +
+        std::to_string(height));
     return *this;
 }
 
@@ -699,8 +938,72 @@ Toplevel& Toplevel::attributes(const std::string& name, const std::string& value
 
 std::string Toplevel::attributes(const std::string& name) const
 {
-    auto ret = interp_->evaluate("wm attributes " + full_name() + " " + name);
-    return ret;
+    return interp_->evaluate("wm attributes " + full_name() + " " + name);
+}
+
+Toplevel& Toplevel::iconify()
+{
+    interp_->evaluate("wm iconify " + full_name());
+    return *this;
+}
+
+Toplevel& Toplevel::deiconify()
+{
+    interp_->evaluate("wm deiconify " + full_name());
+    return *this;
+}
+
+Toplevel& Toplevel::withdraw()
+{
+    interp_->evaluate("wm withdraw " + full_name());
+    return *this;
+}
+
+Toplevel& Toplevel::state(const std::string& new_state)
+{
+    interp_->evaluate("wm state " + full_name() + " " + new_state);
+    return *this;
+}
+
+std::string Toplevel::state() const
+{
+    return interp_->evaluate("wm state " + full_name());
+}
+
+Toplevel& Toplevel::lift()
+{
+    interp_->evaluate("raise " + full_name());
+    return *this;
+}
+
+Toplevel& Toplevel::lower()
+{
+    interp_->evaluate("lower " + full_name());
+    return *this;
+}
+
+Toplevel& Toplevel::grab_set()
+{
+    interp_->evaluate("grab set " + full_name());
+    return *this;
+}
+
+Toplevel& Toplevel::grab_release()
+{
+    interp_->evaluate("grab release " + full_name());
+    return *this;
+}
+
+Toplevel& Toplevel::iconphoto(const std::string& image_name)
+{
+    interp_->evaluate("wm iconphoto " + full_name() + " -default " + image_name);
+    return *this;
+}
+
+Toplevel& Toplevel::iconbitmap(const std::string& bitmap_path)
+{
+    interp_->evaluate("wm iconbitmap " + full_name() + " \"" + bitmap_path + "\"");
+    return *this;
 }
 
 Button::Button(Widget *parent)

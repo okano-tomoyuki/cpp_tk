@@ -91,6 +91,54 @@ struct Event
 class Interpreter;
 class Widget;
 
+class ArgValue 
+{
+public:
+    enum class ValueType 
+    {
+        NONE,
+        STRING,
+        INT,
+        DOUBLE,
+        BOOL
+    };
+
+    ArgValue();
+    
+    ArgValue(const std::string& s);
+    
+    ArgValue(const char* s);
+    
+    ArgValue(int v);
+    
+    ArgValue(double v);
+    
+    ArgValue(bool v);
+
+    ArgValue(const ArgValue& other);
+    
+    ArgValue& operator=(const ArgValue& other);
+
+    ~ArgValue();
+
+    ValueType type() const;
+
+    std::string to_tcl() const;
+
+private:
+    ValueType type_;
+    union 
+    {
+        int i_;
+        double d_;
+        bool b_;
+    };
+    std::string* str_;
+
+    void cleanup();
+    void copy_from(const ArgValue& other);
+};
+
 class Object
 {
 
@@ -261,11 +309,41 @@ public:
 
     Tk& geometry(const std::string &size);
 
+    std::string geometry() const;
+
     Tk& protocol(const std::string& name, std::function<void()> handler);
 
-    Tk& attributes(const std::string& name, const std::string& value);
+    Tk& resizable(bool width, bool height);
+
+    Tk& minsize(int width, int height);
+
+    Tk& maxsize(int width, int height);
+
+    Tk& iconify(); 
     
+    Tk& deiconify(); 
+    
+    Tk& withdraw(); 
+    
+    Tk& state(const std::string& new_state); 
+    
+    std::string state() const;
+
+    Tk& attributes(const std::string& name, const std::string& value);
+
     std::string attributes(const std::string& name) const;
+
+    Tk& lift();
+    
+    Tk& lower();
+
+    Tk& grab_set();
+
+    Tk& grab_release();
+
+    Tk& iconphoto(const std::string& image_name);
+
+    Tk& iconbitmap(const std::string& bitmap_path);
 
     void mainloop();
 
@@ -297,11 +375,41 @@ public:
 
     Toplevel& geometry(const std::string &size);
 
+    std::string geometry() const;
+
     Toplevel& protocol(const std::string& name, std::function<void()> handler);
+
+    Toplevel& resizable(bool width, bool height);
+
+    Toplevel& minsize(int width, int height);
+
+    Toplevel& maxsize(int width, int height);
+
+    Toplevel& iconify();
+
+    Toplevel& deiconify();
+
+    Toplevel& withdraw();
 
     Toplevel& attributes(const std::string& name, const std::string& value);
     
     std::string attributes(const std::string& name) const;
+
+    Toplevel& state(const std::string& new_state);
+
+    std::string state() const;
+
+    Toplevel& lift();
+    
+    Toplevel& lower();
+
+    Toplevel& grab_set();
+
+    Toplevel& grab_release();
+
+    Toplevel& iconphoto(const std::string& image_name);
+
+    Toplevel& iconbitmap(const std::string& bitmap_path);
 
 };
 
