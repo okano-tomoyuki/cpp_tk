@@ -54,6 +54,22 @@ std::string sanitize(const std::string& s)
     return ret;
 }
 
+std::string escape_tcl_string(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+
+    for (char c : s) 
+    {
+        if (c == '"' || c == '\\' || c == '$' || c == '[' || c == ']' || c == '{' || c == '}') 
+        {
+            out.push_back('\\');
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
 }
 
 namespace cpp_tk
@@ -292,7 +308,7 @@ std::string ArgValue::to_tcl() const
 {
     if (type_ == ValueType::STRING) 
     {
-        return "\"" + *str_ + "\"";
+        return "\"" + escape_tcl_string(*str_) + "\"";
     }
     else if (type_ == ValueType::INT) 
     {
@@ -482,73 +498,79 @@ const std::string& Widget::full_name() const
     return full_name_;
 }
 
-Widget& Widget::pack(const std::map<std::string, std::string> &options)
+Widget& Widget::pack(const std::map<std::string, ArgValue> &options)
 {
     std::ostringstream oss;
     oss << "pack " << full_name();
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Widget& Widget::grid(const std::map<std::string, std::string>& options)
+Widget& Widget::grid(const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << "grid " << full_name();
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Widget& Widget::place(const std::map<std::string, std::string> &options)
+Widget& Widget::place(const std::map<std::string, ArgValue> &options)
 {
     std::ostringstream oss;
     oss << "place " << full_name();
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Widget& Widget::config(const std::map<std::string, std::string> &option)
+Widget& Widget::config(const std::map<std::string, ArgValue> &option)
 {
     std::ostringstream oss;
     oss << full_name() << " configure";
     for (const auto &kv : option)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Widget& Widget::grid_rowconfigure(int row, const std::map<std::string, std::string>& options)
+Widget& Widget::config(const std::string& name, const ArgValue& value)
+{
+    config({{name, value}});
+    return *this;
+}
+
+Widget& Widget::grid_rowconfigure(int row, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << "grid rowconfigure " << full_name() << " " << row;
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Widget& Widget::grid_columnconfigure(int column, const std::map<std::string, std::string>& options)
+Widget& Widget::grid_columnconfigure(int column, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << "grid columnconfigure " << full_name() << " " << column;
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
@@ -1040,19 +1062,19 @@ Canvas::Canvas(Widget *widget)
     : Widget(widget, "canvas", "c")
 {}
 
-Canvas& Canvas::itemconfig(const std::string& id_or_tag, const std::map<std::string, std::string>& options)
+Canvas& Canvas::itemconfig(const std::string& id_or_tag, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " itemconfig " << id_or_tag;
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
 }
 
-std::string Canvas::create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options)
+std::string Canvas::create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -1064,12 +1086,12 @@ std::string Canvas::create_line(const int& x1, const int& y1, const int& x2, con
         << " " << y2;
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_oval(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options)
+std::string Canvas::create_oval(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -1081,12 +1103,12 @@ std::string Canvas::create_oval(const int& x1, const int& y1, const int& x2, con
         << " " << y2;
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options)
+std::string Canvas::create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -1098,12 +1120,12 @@ std::string Canvas::create_rectangle(const int& x1, const int& y1, const int& x2
         << " " << y2;
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_text(const int& x, const int& y, const std::map<std::string, std::string>& options)
+std::string Canvas::create_text(const int& x, const int& y, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -1113,12 +1135,12 @@ std::string Canvas::create_text(const int& x, const int& y, const std::map<std::
         << " " << y;
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_polygon(const std::vector<int>& coords, const std::map<std::string, std::string>& options)
+std::string Canvas::create_polygon(const std::vector<int>& coords, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " create polygon";
@@ -1127,12 +1149,12 @@ std::string Canvas::create_polygon(const std::vector<int>& coords, const std::ma
         oss << " " << c;
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, std::string>& options)
+std::string Canvas::create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -1140,12 +1162,12 @@ std::string Canvas::create_arc(int x1, int y1, int x2, int y2, const std::map<st
         << x1 << " " << y1 << " " << x2 << " " << y2;
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_image(int x, int y, const std::map<std::string, std::string>& options)
+std::string Canvas::create_image(int x, int y, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -1153,12 +1175,12 @@ std::string Canvas::create_image(int x, int y, const std::map<std::string, std::
         << x << " " << y;
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     return interp_->evaluate(oss.str());
 }
 
-std::string Canvas::create_window(int x, int y, Widget* widget, const std::map<std::string, std::string>& options)
+std::string Canvas::create_window(int x, int y, Widget* widget, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -1167,7 +1189,7 @@ std::string Canvas::create_window(int x, int y, Widget* widget, const std::map<s
         << " -window " << widget->full_name();
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     return interp_->evaluate(oss.str());
 }
@@ -1416,37 +1438,37 @@ Listbox& Listbox::selectmode(const std::string& mode)
     return *this;
 }
 
-Menu::Menu(Widget* parent, const std::map<std::string, std::string>& options)
+Menu::Menu(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "menu", "menu")
 {
     std::ostringstream oss;
     oss << full_name();
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
 }
 
-Menu& Menu::add_command(const std::map<std::string, std::string>& options)
+Menu& Menu::add_command(const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " add command";
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Menu& Menu::add_cascade(const std::map<std::string, std::string>& options)
+Menu& Menu::add_cascade(const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " add cascade";
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
@@ -1494,13 +1516,13 @@ PanedWindow& PanedWindow::orient(const std::string& dir)
     return *this;
 }
 
-PanedWindow& PanedWindow::add(Widget* child, const std::map<std::string, std::string>& options)
+PanedWindow& PanedWindow::add(Widget* child, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " add " << child->full_name();
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
@@ -1685,13 +1707,13 @@ Text& Text::tag_remove(const std::string& tag, const std::string& start, const s
     return *this;
 }
 
-Text& Text::tag_config(const std::string& tag, const std::map<std::string, std::string>& options)
+Text& Text::tag_config(const std::string& tag, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " tag configure " << tag;
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
@@ -1709,14 +1731,14 @@ Text& Text::mark_unset(const std::string& mark)
     return *this;
 }
 
-std::string Text::search(const std::string& pattern, const std::string& index, const std::map<std::string, std::string>& options)
+std::string Text::search(const std::string& pattern, const std::string& index, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " search";
 
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
 
     oss << " {" << pattern << "} " << index;
@@ -1735,20 +1757,24 @@ std::string Text::search(const std::string& pattern, const std::string& index, c
 namespace ttk
 {
 
-Font::Font(Widget* parent, const std::map<std::string, std::string>& option)
+Font::Font(Widget* parent, const std::map<std::string, ArgValue>& option)
     : name_("font_" + id)
     , interp_(parent->interp())
 {
     interp_->evaluate("font create " + name_);
+    if (!option.empty())
+    {
+        config(option);
+    }
 }
 
-Font& Font::config(const std::map<std::string, std::string>& option)
+Font& Font::config(const std::map<std::string, ArgValue>& option)
 {
     std::ostringstream oss;
     oss << "font configure " << name_;
     for (const auto &kv : option)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
     interp_->evaluate(oss.str());
     return *this;
@@ -2063,7 +2089,7 @@ Treeview::Treeview(Widget* parent)
     : Widget(parent, "ttk::treeview", "ttk_tree")
 {}
 
-Treeview& Treeview::insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, std::string>& options)
+Treeview& Treeview::insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name()
@@ -2073,7 +2099,7 @@ Treeview& Treeview::insert(const std::string& parent, const std::string& index, 
         << " -id " << iid;
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     interp_->evaluate(oss.str());
     return *this;
@@ -2085,37 +2111,37 @@ Treeview& Treeview::erase(const std::string& iid)
     return *this;
 }
 
-Treeview& Treeview::item(const std::string& iid, const std::map<std::string, std::string>& options)
+Treeview& Treeview::item(const std::string& iid, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " item " << iid;
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Treeview& Treeview::heading(const std::string& column, const std::map<std::string, std::string>& options)
+Treeview& Treeview::heading(const std::string& column, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " heading " << column;
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     interp_->evaluate(oss.str());
     return *this;
 }
 
-Treeview& Treeview::column(const std::string& column, const std::map<std::string, std::string>& options)
+Treeview& Treeview::column(const std::string& column, const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
     oss << full_name() << " column " << column;
 
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
 
     interp_->evaluate(oss.str());
     return *this;
@@ -2140,7 +2166,7 @@ std::vector<std::string> Treeview::selection() const
 namespace colorchooser
 {
 
-std::string askcolor(const std::map<std::string, std::string>& options)
+std::string askcolor(const std::map<std::string, ArgValue>& options)
 {
     // Interpreter を取得
     auto* interp = cpp_tk::interp_map[std::this_thread::get_id()];
@@ -2152,7 +2178,7 @@ std::string askcolor(const std::map<std::string, std::string>& options)
 
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second;
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
 
     bool ok = false;
@@ -2169,32 +2195,32 @@ std::string askcolor(const std::map<std::string, std::string>& options)
 namespace filedialog
 {
 
-std::string askopenfile(const std::map<std::string, std::string>& options) 
+std::string askopenfile(const std::map<std::string, ArgValue>& options) 
 {
     std::string cmd = "tk_getOpenFile";
     for (const auto& kv : options) 
     {
-        cmd += " -" + kv.first + " {" + kv.second + "}";
+        cmd += " -" + kv.first + " {" + kv.second.to_tcl() + "}";
     }
     return interp_map[std::this_thread::get_id()]->evaluate(cmd);
 }
 
-std::string asksaveasfilename(const std::map<std::string, std::string>& options) 
+std::string asksaveasfilename(const std::map<std::string, ArgValue>& options) 
 {
     std::string cmd = "tk_getSaveFile";
     for (const auto& kv : options) 
     {
-        cmd += " -" + kv.first + " {" + kv.second + "}";
+        cmd += " -" + kv.first + " {" + kv.second.to_tcl() + "}";
     }
     return interp_map[std::this_thread::get_id()]->evaluate(cmd);
 }
 
-std::string askdirectory(const std::map<std::string, std::string>& options) 
+std::string askdirectory(const std::map<std::string, ArgValue>& options) 
 {
     std::string cmd = "tk_chooseDirectory";
     for (const auto& kv : options) 
     {
-        cmd += " -" + kv.first + " {" + kv.second + "}";
+        cmd += " -" + kv.first + " {" + kv.second.to_tcl() + "}";
     }
     return interp_map[std::this_thread::get_id()]->evaluate(cmd);
 }
@@ -2206,22 +2232,22 @@ namespace messagebox
 
 std::string showinfo(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon info -title {" + title + "} -message {" + message + "}");
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon info -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
 }
 
 std::string showwarning(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon warning -title {" + title + "} -message {" + message + "}");
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon warning -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
 }
 
 std::string showerror(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon error -title {" + title + "} -message {" + message + "}");
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon error -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
 }
 
 std::string askquestion(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type yesno -icon question -title {" + title + "} -message {" + message + "}");
+    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type yesno -icon question -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
 }
 
 bool askyesno(const std::string& title, const std::string& message) 
@@ -2231,13 +2257,13 @@ bool askyesno(const std::string& title, const std::string& message)
 
 bool askokcancel(const std::string& title, const std::string& message) 
 {
-    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type okcancel -icon question -title {" + title + "} -message {" + message + "}");
+    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type okcancel -icon question -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
     return result == "ok";
 }
 
 bool askretrycancel(const std::string& title, const std::string& message) 
 {
-    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type retrycancel -icon warning -title {" + title + "} -message {" + message + "}");
+    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type retrycancel -icon warning -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
     return result == "retry";
 }
 

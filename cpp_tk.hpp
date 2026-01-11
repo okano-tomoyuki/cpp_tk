@@ -243,17 +243,19 @@ public:
 
     const std::string& full_name() const;
 
-    Widget& pack(const std::map<std::string, std::string> &options = {});
+    Widget& pack(const std::map<std::string, ArgValue> &options = {});
 
-    Widget& grid(const std::map<std::string, std::string> &options = {});
+    Widget& grid(const std::map<std::string, ArgValue> &options = {});
 
-    Widget& place(const std::map<std::string, std::string> &options = {});
+    Widget& place(const std::map<std::string, ArgValue> &option = {});
 
-    Widget& config(const std::map<std::string, std::string> &option);
+    Widget& config(const std::string& name, const ArgValue& value);
 
-    Widget& grid_rowconfigure(int row, const std::map<std::string, std::string>& options);
+    Widget& config(const std::map<std::string, ArgValue> &option);
 
-    Widget& grid_columnconfigure(int column, const std::map<std::string, std::string>& options);
+    Widget& grid_rowconfigure(int row, const std::map<std::string, ArgValue>& options);
+
+    Widget& grid_columnconfigure(int column, const std::map<std::string, ArgValue>& options);
 
     std::string cget(const std::string& name) const;
 
@@ -436,23 +438,23 @@ public:
 
     explicit Canvas(Widget *widget);
 
-    Canvas& itemconfig(const std::string& id_or_tag, const std::map<std::string, std::string>& options);
+    Canvas& itemconfig(const std::string& id_or_tag, const std::map<std::string, ArgValue>& options);
 
-    std::string create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options = {});
+    std::string create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options = {});
 
-    std::string create_oval(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options = {});
+    std::string create_oval(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options = {});
 
-    std::string create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, std::string>& options = {});
+    std::string create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options = {});
 
-    std::string create_text(const int& x, const int& y, const std::map<std::string, std::string>& options = {});
+    std::string create_text(const int& x, const int& y, const std::map<std::string, ArgValue>& options = {});
 
-    std::string create_polygon(const std::vector<int>& coords, const std::map<std::string, std::string>& options = {}); 
+    std::string create_polygon(const std::vector<int>& coords, const std::map<std::string, ArgValue>& options = {}); 
     
-    std::string create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, std::string>& options = {}); 
+    std::string create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, ArgValue>& options = {}); 
     
-    std::string create_image(int x, int y, const std::map<std::string, std::string>& options = {}); 
+    std::string create_image(int x, int y, const std::map<std::string, ArgValue>& options = {}); 
     
-    std::string create_window(int x, int y, Widget* widget, const std::map<std::string, std::string>& options = {}); 
+    std::string create_window(int x, int y, Widget* widget, const std::map<std::string, ArgValue>& options = {}); 
     
     std::vector<std::string> find_overlapping(int x1, int y1, int x2, int y2) const; 
     
@@ -561,11 +563,11 @@ class Menu : public Widget
 { 
 public: 
 
-    explicit Menu(Widget* parent, const std::map<std::string, std::string>& options = {}); 
+    explicit Menu(Widget* parent, const std::map<std::string, ArgValue>& options = {}); 
     
-    Menu& add_command(const std::map<std::string, std::string>& options); 
+    Menu& add_command(const std::map<std::string, ArgValue>& options); 
     
-    Menu& add_cascade(const std::map<std::string, std::string>& options); 
+    Menu& add_cascade(const std::map<std::string, ArgValue>& options); 
     
     Menu& add_separator(); Menu& delete_item(const std::string& index); 
 
@@ -602,7 +604,7 @@ public:
     
     PanedWindow& orient(const std::string& dir); 
     
-    PanedWindow& add(Widget* child, const std::map<std::string, std::string>& options = {}); 
+    PanedWindow& add(Widget* child, const std::map<std::string, ArgValue>& options = {}); 
     
     PanedWindow& forget(Widget* child); 
 
@@ -699,13 +701,13 @@ public:
 
     Text& tag_remove(const std::string& tag, const std::string& start, const std::string& end); 
 
-    Text& tag_config(const std::string& tag, const std::map<std::string, std::string>& options);
+    Text& tag_config(const std::string& tag, const std::map<std::string, ArgValue>& options);
 
     Text& mark_set(const std::string& mark, const std::string& index); 
     
     Text& mark_unset(const std::string& mark);
 
-    std::string search(const std::string& pattern, const std::string& index, const std::map<std::string, std::string>& options = {});
+    std::string search(const std::string& pattern, const std::string& index, const std::map<std::string, ArgValue>& options = {});
 
 };
 
@@ -716,9 +718,9 @@ class Font : public Object
 {
 public:
 
-    explicit Font(Widget* parent, const std::map<std::string, std::string>& option = {});
+    explicit Font(Widget* parent, const std::map<std::string, ArgValue>& option = {});
 
-    Font& config(const std::map<std::string, std::string>& option);
+    Font& config(const std::map<std::string, ArgValue>& option);
 
     Font& size(const int& size);
 
@@ -883,15 +885,15 @@ class Treeview : public Widget
 public:
     explicit Treeview(Widget* parent);
 
-    Treeview& insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, std::string>& options = {});
+    Treeview& insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, ArgValue>& options = {});
 
     Treeview& erase(const std::string& iid);
 
-    Treeview& item(const std::string& iid, const std::map<std::string, std::string>& options);
+    Treeview& item(const std::string& iid, const std::map<std::string, ArgValue>& options = {});
 
-    Treeview& heading(const std::string& column, const std::map<std::string, std::string>& options);
+    Treeview& heading(const std::string& column, const std::map<std::string, ArgValue>& options = {});
 
-    Treeview& column(const std::string& column, const std::map<std::string, std::string>& options);
+    Treeview& column(const std::string& column, const std::map<std::string, ArgValue>& options = {});
 
     std::vector<std::string> selection() const;
 };
@@ -900,17 +902,17 @@ public:
 
 namespace colorchooser
 {
-    std::string askcolor(const std::map<std::string, std::string>& options = {});
+    std::string askcolor(const std::map<std::string, ArgValue>& options = {});
 } // colorchooser
 
 namespace filedialog
 {
 
-std::string askopenfile(const std::map<std::string, std::string>& options = {});
+std::string askopenfile(const std::map<std::string, ArgValue>& options = {});
 
-std::string asksaveasfilename(const std::map<std::string, std::string>& options = {});
+std::string asksaveasfilename(const std::map<std::string, ArgValue>& options = {});
 
-std::string askdirectory(const std::map<std::string, std::string>& options = {});
+std::string askdirectory(const std::map<std::string, ArgValue>& options = {});
 
 } // filedialog
 
