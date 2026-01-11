@@ -279,6 +279,29 @@ void StringVar::trace(std::function<void(const std::string&)> callback)
     interp_->trace_var(name_, callback);
 }
 
+BooleanVar::BooleanVar(Widget* parent)
+    : Var(parent, "bool")
+{
+    interp_->set_var(name_, "0");
+}
+
+void BooleanVar::set(bool value)
+{
+    interp_->set_var(name_, value ? "1" : "0");
+}
+
+bool BooleanVar::get() const
+{
+    return interp_->get_var(name_) == "1";
+}
+
+void BooleanVar::trace(std::function<void(const bool&)> callback)
+{
+    interp_->trace_var(name_, [callback](const std::string& v){
+        callback(v == "1");
+    });
+}
+
 IntVar::IntVar(Widget* parent)
     : Var(parent, "int")
 {
@@ -524,6 +547,30 @@ void Tk::quit()
     interp_->evaluate("set forever 1");
 }
 
+Checkbutton::Checkbutton(Widget* parent)
+    : Widget(parent, "checkbutton", "chk")
+{}
+
+Checkbutton& Checkbutton::text(const std::string& text)
+{
+    config({{"text", "\"" + text + "\""}});
+    return *this;
+}
+
+Checkbutton& Checkbutton::variable(Var* var)
+{
+    config({{"variable", var->name()}});
+    return *this;
+}
+
+Checkbutton& Checkbutton::command(std::function<void()> callback)
+{
+    auto cb = sanitize(full_name()) + "_chk_cb";
+    interp_->register_void_callback(cb, callback);
+    config({{"command", cb}});
+    return *this;
+}
+
 Frame::Frame(Widget *parent)
     : Widget(parent, "frame", "f")
 {}
@@ -676,6 +723,121 @@ std::string Canvas::create_text(const int& x, const int& y, const std::map<std::
         oss << " -" << kv.first << " " << kv.second;
     }
     return interp_->evaluate(oss.str());
+}
+
+std::string Canvas::create_polygon(const std::vector<int>& coords, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " create polygon";
+
+    for (int c : coords)
+        oss << " " << c;
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    return interp_->evaluate(oss.str());
+}
+
+std::string Canvas::create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name()
+        << " create arc "
+        << x1 << " " << y1 << " " << x2 << " " << y2;
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    return interp_->evaluate(oss.str());
+}
+
+std::string Canvas::create_image(int x, int y, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name()
+        << " create image "
+        << x << " " << y;
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    return interp_->evaluate(oss.str());
+}
+
+std::string Canvas::create_window(int x, int y, Widget* widget, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name()
+        << " create window "
+        << x << " " << y
+        << " -window " << widget->full_name();
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    return interp_->evaluate(oss.str());
+}
+
+std::vector<std::string> Canvas::find_overlapping(int x1, int y1, int x2, int y2) const
+{
+    auto result = interp_->evaluate(
+        full_name() + " find overlapping " +
+        std::to_string(x1) + " " +
+        std::to_string(y1) + " " +
+        std::to_string(x2) + " " +
+        std::to_string(y2)
+    );
+
+    std::vector<std::string> ids;
+    std::istringstream iss(result);
+    std::string id;
+    while (iss >> id)
+        ids.push_back(id);
+
+    return ids;
+}
+
+std::vector<std::string> Canvas::find_closest(int x, int y) const
+{
+    auto result = interp_->evaluate(
+        full_name() + " find closest " +
+        std::to_string(x) + " " +
+        std::to_string(y)
+    );
+
+    std::vector<std::string> ids;
+    std::istringstream iss(result);
+    std::string id;
+    while (iss >> id)
+        ids.push_back(id);
+
+    return ids;
+}
+
+Canvas& Canvas::addtag(const std::string& tag, const std::string& where, const std::string& target)
+{
+    interp_->evaluate(full_name() + " addtag " + tag + " " + where + " " + target);
+    return *this;
+}
+
+Canvas& Canvas::dtag(const std::string& tag, const std::string& target)
+{
+    interp_->evaluate(full_name() + " dtag " + target + " " + tag);
+    return *this;
+}
+
+std::vector<std::string> Canvas::gettags(const std::string& id) const
+{
+    auto result = interp_->evaluate(full_name() + " gettags " + id);
+
+    std::vector<std::string> tags;
+    std::istringstream iss(result);
+    std::string tag;
+    while (iss >> tag)
+        tags.push_back(tag);
+
+    return tags;
 }
 
 Canvas& Canvas::coords(const std::string& item_id, const std::vector<int>& coords)
@@ -861,6 +1023,132 @@ Listbox& Listbox::selectmode(const std::string& mode)
     return *this;
 }
 
+Menu::Menu(Widget* parent, const std::map<std::string, std::string>& options)
+    : Widget(parent, "menu", "menu")
+{
+    std::ostringstream oss;
+    oss << full_name();
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+}
+
+Menu& Menu::add_command(const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " add command";
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Menu& Menu::add_cascade(const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " add cascade";
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Menu& Menu::add_separator()
+{
+    interp_->evaluate(full_name() + " add separator");
+    return *this;
+}
+
+Menu& Menu::delete_item(const std::string& index)
+{
+    interp_->evaluate(full_name() + " delete " + index);
+    return *this;
+}
+
+Menubutton::Menubutton(Widget* parent)
+    : Widget(parent, "menubutton", "mb")
+{}
+
+Menubutton& Menubutton::menu(Menu* menu)
+{
+    config({{"menu", menu->full_name()}});
+    return *this;
+}
+
+Message::Message(Widget* parent)
+    : Widget(parent, "message", "msg")
+{}
+
+Message& Message::text(const std::string& text)
+{
+    config({{"text", "\"" + text + "\""}});
+    return *this;
+}
+
+PanedWindow::PanedWindow(Widget* parent)
+    : Widget(parent, "panedwindow", "pw")
+{}
+
+PanedWindow& PanedWindow::orient(const std::string& dir)
+{
+    config({{"orient", dir}});
+    return *this;
+}
+
+PanedWindow& PanedWindow::add(Widget* child, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " add " << child->full_name();
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+PanedWindow& PanedWindow::forget(Widget* child)
+{
+    interp_->evaluate(full_name() + " forget " + child->full_name());
+    return *this;
+}
+
+Radiobutton::Radiobutton(Widget* parent)
+    : Widget(parent, "radiobutton", "rb")
+{}
+
+Radiobutton& Radiobutton::text(const std::string& text)
+{
+    config({{"text", "\"" + text + "\""}});
+    return *this;
+}
+
+Radiobutton& Radiobutton::variable(Var* var)
+{
+    config({{"variable", var->name()}});
+    return *this;
+}
+
+Radiobutton& Radiobutton::value(const std::string& val)
+{
+    config({{"value", "\"" + val + "\""}});
+    return *this;
+}
+
+Radiobutton& Radiobutton::command(std::function<void()> callback)
+{
+    auto cb = sanitize(full_name()) + "_rb_cb";
+    interp_->register_void_callback(cb, callback);
+    config({{"command", cb}});
+    return *this;
+}
+
 Scale::Scale(Widget* parent)
     : Widget(parent, "scale", "scale") 
 {}
@@ -915,6 +1203,42 @@ Scrollbar& Scrollbar::set(const std::string& args)
     return *this;
 }
 
+Spinbox::Spinbox(Widget* parent)
+    : Widget(parent, "spinbox", "sp")
+{}
+
+Spinbox& Spinbox::from(double val)
+{
+    config({{"from", std::to_string(val)}});
+    return *this;
+}
+
+Spinbox& Spinbox::to(double val)
+{
+    config({{"to", std::to_string(val)}});
+    return *this;
+}
+
+Spinbox& Spinbox::increment(double val)
+{
+    config({{"increment", std::to_string(val)}});
+    return *this;
+}
+
+Spinbox& Spinbox::textvariable(Var* var)
+{
+    config({{"textvariable", var->name()}});
+    return *this;
+}
+
+Spinbox& Spinbox::command(std::function<void()> callback)
+{
+    auto cb = sanitize(full_name()) + "_sp_cb";
+    interp_->register_void_callback(cb, callback);
+    config({{"command", cb}});
+    return *this;
+}
+
 Text::Text(Widget* parent) 
     : Widget(parent, "text", "text") 
 {}
@@ -954,6 +1278,65 @@ Text& Text::wrap(const std::string& mode)
 {
     config({{"wrap", mode}});
     return *this;
+}
+
+Text& Text::tag_add(const std::string& tag, const std::string& start, const std::string& end)
+{
+    interp_->evaluate(full_name() + " tag add " + tag + " " + start + " " + end);
+    return *this;
+}
+
+Text& Text::tag_remove(const std::string& tag, const std::string& start, const std::string& end)
+{
+    interp_->evaluate(full_name() + " tag remove " + tag + " " + start + " " + end);
+    return *this;
+}
+
+Text& Text::tag_config(const std::string& tag, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " tag configure " << tag;
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Text& Text::mark_set(const std::string& mark, const std::string& index)
+{
+    interp_->evaluate(full_name() + " mark set " + mark + " " + index);
+    return *this;
+}
+
+Text& Text::mark_unset(const std::string& mark)
+{
+    interp_->evaluate(full_name() + " mark unset " + mark);
+    return *this;
+}
+
+std::string Text::search(const std::string& pattern, const std::string& index, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " search";
+
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+
+    oss << " {" << pattern << "} " << index;
+
+    auto ok  = false;
+    auto ret = interp_->evaluate(oss.str(), &ok);
+
+    if (!ok)
+    {
+        return "";
+    }
+
+    return ret;
 }
 
 namespace ttk
@@ -1215,6 +1598,16 @@ Label& Label::font(const Font& font)
     return *this;
 }
 
+Labelframe::Labelframe(Widget* parent)
+    : Widget(parent, "ttk::labelframe", "ttk_labelframe")
+{}
+
+Labelframe& Labelframe::text(const std::string& text)
+{
+    config({{"text", "\"" + text + "\""}});
+    return *this;
+}
+
 Notebook::Notebook(Widget* parent) 
     : Widget(parent, "ttk::notebook", "ttk_notebook") 
 {}
@@ -1231,7 +1624,154 @@ Notebook& Notebook::select(int index)
     return *this;
 }
 
+Progressbar::Progressbar(Widget* parent)
+    : Widget(parent, "ttk::progressbar", "ttk_progress")
+{}
+
+Progressbar& Progressbar::mode(const std::string& mode)
+{
+    config({{"mode", mode}});   // "determinate" or "indeterminate"
+    return *this;
+}
+
+Progressbar& Progressbar::value(double v)
+{
+    config({{"value", std::to_string(v)}});
+    return *this;
+}
+
+Progressbar& Progressbar::start(int interval)
+{
+    interp_->evaluate(full_name() + " start " + std::to_string(interval));
+    return *this;
+}
+
+Progressbar& Progressbar::stop()
+{
+    interp_->evaluate(full_name() + " stop");
+    return *this;
+}
+
+Progressbar& Progressbar::step(double amount)
+{
+    interp_->evaluate(full_name() + " step " + std::to_string(amount));
+    return *this;
+}
+
+Separator::Separator(Widget* parent)
+    : Widget(parent, "ttk::separator", "ttk_sep") 
+{}
+
+Sizegrip::Sizegrip(Widget* parent)
+    : Widget(parent, "ttk::sizegrip", "ttk_sizegrip")
+{}
+
+Treeview::Treeview(Widget* parent)
+    : Widget(parent, "ttk::treeview", "ttk_tree")
+{}
+
+Treeview& Treeview::insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name()
+        << " insert "
+        << parent << " "
+        << index  << " "
+        << " -id " << iid;
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Treeview& Treeview::erase(const std::string& iid)
+{
+    interp_->evaluate(full_name() + " delete " + iid);
+    return *this;
+}
+
+Treeview& Treeview::item(const std::string& iid, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " item " << iid;
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Treeview& Treeview::heading(const std::string& column, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " heading " << column;
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Treeview& Treeview::column(const std::string& column, const std::map<std::string, std::string>& options)
+{
+    std::ostringstream oss;
+    oss << full_name() << " column " << column;
+
+    for (const auto& kv : options)
+        oss << " -" << kv.first << " " << kv.second;
+
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+std::vector<std::string> Treeview::selection() const
+{
+    auto result = interp_->evaluate(full_name() + " selection");
+
+    std::vector<std::string> ids;
+    std::istringstream iss(result);
+    std::string id;
+
+    while (iss >> id)
+        ids.push_back(id);
+
+    return ids;
+}
+
 } // ttk
+
+namespace colorchooser
+{
+
+std::string askcolor(const std::map<std::string, std::string>& options)
+{
+    // Interpreter を取得
+    auto* interp = cpp_tk::interp_map[std::this_thread::get_id()];
+    if (!interp)
+        return "";
+
+    std::ostringstream oss;
+    oss << "tk_chooseColor";
+
+    for (const auto& kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second;
+    }
+
+    bool ok = false;
+    auto ret = interp->evaluate(oss.str(), &ok);
+
+    if (!ok)
+        return "";
+
+    return ret;   // 例: "#ff0000" または ""（キャンセル時）
+}
+
+} // namespace colorchooser
 
 namespace filedialog
 {

@@ -152,7 +152,7 @@ public:
 
     bool get() const; 
 
-    void trace(std::function<void(bool)> callback); 
+    void trace(std::function<void(const bool&)> callback); 
 
 };
 
@@ -749,7 +749,7 @@ public:
 
     Treeview& insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, std::string>& options = {});
 
-    Treeview& delete_item(const std::string& iid);
+    Treeview& erase(const std::string& iid);
 
     Treeview& item(const std::string& iid, const std::map<std::string, std::string>& options);
 
