@@ -103,23 +103,6 @@ public:
         interp_ = nullptr;
     }
 
-    std::string evaluate(const std::string &command, bool* success = nullptr)
-    {
-        int code = Tcl_Eval(interp_, command.c_str());
-        if (success)
-        {
-            *success = (code == TCL_OK);
-            
-            if (!*success)
-            {
-                std::cerr << "Tcl Error: " << Tcl_GetStringResult(interp_) << std::endl;
-            }
-        }
-        return Tcl_GetStringResult(interp_);
-    }
-
-    // ArgValue のリストをそのまま渡してコマンドを実行する。
-    // Tcl_Obj への変換は内部で行うため、呼び出し側は TCL API に依存しない。
     std::string invoke(const std::vector<ArgValue>& words, bool* success = nullptr)
     {
         std::vector<Tcl_Obj*> objv;
@@ -916,12 +899,12 @@ Tk& Tk::iconbitmap(const std::string& bitmap_path)
 
 void Tk::mainloop() 
 {
-    interp_->evaluate("vwait forever");
+    interp_->invoke({"vwait", "forever"});
 }
 
 void Tk::quit() 
 {
-    interp_->evaluate("set forever 1");
+    interp_->invoke({"set", "forever", 1});
 }
 
 Checkbutton::Checkbutton(const Widget& parent, const std::map<std::string, ArgValue>& options)

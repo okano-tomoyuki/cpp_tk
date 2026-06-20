@@ -370,7 +370,7 @@ protected:
 
     std::string full_name_;
 
-    int         after_id_;       
+    int         after_id_;
 };
 
 class Tk : public Widget 
