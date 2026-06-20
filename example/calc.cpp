@@ -43,10 +43,10 @@ int main()
             {"bg", "white"},
             {"anchor", "e"},
             {"font", "Arial 30"},
-            {"width", "20"},
-            {"height", "2"}
+            {"width", 20},
+            {"height", 2}
         })
-        .grid({{"column", "0"}, {"row", "0"}, {"columnspan", "4"}, {"sticky", "nsew"}});
+        .grid({{"column", 0}, {"row", 0}, {"columnspan", 4}, {"sticky", "nsew"}});
 
     auto create_button = [&app](const std::string &text, const int &col, const int &row, const int &colspawn, std::function<void()> on_click)
     {
@@ -55,7 +55,7 @@ int main()
             .text(text)
             .command(on_click)
             .config({{"font", "Arial 30"}})
-            .grid({{"column", std::to_string(col)}, {"row", std::to_string(row)}, {"columnspan", std::to_string(colspawn)}, {"sticky", "nsew"}});
+            .grid({{"column", col}, {"row", row}, {"columnspan", colspawn}, {"sticky", "nsew"}});
     };
 
     // ACボタン

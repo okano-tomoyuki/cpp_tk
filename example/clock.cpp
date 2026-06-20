@@ -61,13 +61,13 @@ int main()
 
         int text_x = CENTER_X + (CLOCK_RADIUS - 20) * std::cos(angle);
         int text_y = CENTER_Y - (CLOCK_RADIUS - 20) * std::sin(angle);
-        canvas.create_text(text_x, text_y, {{"text", "\"" + std::to_string(i == 0 ? 12 : i) + "\""}});
+        canvas.create_text(text_x, text_y, {{"text", i == 0 ? 12 : i}});
     }
 
     // 針のIDを保持
-    auto hour_hand_id = canvas.create_line(CENTER_X, CENTER_Y, CENTER_X, CENTER_Y - 50, {{"width", "4"}, {"fill", "black"}});
-    auto minute_hand_id = canvas.create_line(CENTER_X, CENTER_Y, CENTER_X, CENTER_Y - 70, {{"width", "2"}, {"fill", "blue"}});
-    auto second_hand_id = canvas.create_line(CENTER_X, CENTER_Y, CENTER_X, CENTER_Y - 90, {{"width", "1"}, {"fill", "red"}});
+    auto hour_hand_id = canvas.create_line(CENTER_X, CENTER_Y, CENTER_X, CENTER_Y - 50, {{"width", 4}, {"fill", "black"}});
+    auto minute_hand_id = canvas.create_line(CENTER_X, CENTER_Y, CENTER_X, CENTER_Y - 70, {{"width", 2}, {"fill", "blue"}});
+    auto second_hand_id = canvas.create_line(CENTER_X, CENTER_Y, CENTER_X, CENTER_Y - 90, {{"width", 1}, {"fill", "red"}});
 
     // 時計更新関数
     std::function<void()> update_clock = [&]() {
