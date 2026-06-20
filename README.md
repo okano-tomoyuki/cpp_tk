@@ -63,7 +63,7 @@ int main()
     namespace messagebox = tk::messagebox;
 
     tk::Tk root;
-    tk::Button btn(&root);
+    tk::Button btn(root);
     btn.text("Click Me").command([]() {
         messagebox::showinfo("Hello", "Button clicked!");
     });

@@ -36,7 +36,7 @@ int main()
     std::string operation;
     bool op_clicked = false;
 
-    auto label_result = ttk::Label(&app);
+    auto label_result = ttk::Label(app);
     label_result
         .text("0")
         .config({
@@ -50,7 +50,7 @@ int main()
 
     auto create_button = [&app](const std::string &text, const int &col, const int &row, const int &colspawn, std::function<void()> on_click)
     {
-        auto btn = ttk::Button(&app);
+        auto btn = ttk::Button(app);
         btn
             .text(text)
             .command(on_click)

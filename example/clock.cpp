@@ -35,7 +35,7 @@ int main()
     auto app = tk::Tk();
     app.title("Clock");
 
-    auto canvas = tk::Canvas(&app);
+    auto canvas = tk::Canvas(app);
     canvas
         .width(WIDTH)
         .height(HEIGHT)

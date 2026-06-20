@@ -12,32 +12,32 @@ int main()
     auto th = std::thread{[](){
         auto tk         = tk::Tk();
 
-        auto frame      = tk::Frame(&tk);
+        auto frame      = tk::Frame(tk);
         frame
             .pack();
 
-        auto label      = ttk::Label(&frame);
+        auto label      = ttk::Label(frame);
         label
             .text("LLLL")
             .pack();
 
-        auto entry      = ttk::Entry(&frame);
+        auto entry      = ttk::Entry(frame);
         entry
             .set("Hello World")
             .icursor("5")
             .pack();
 
-        auto listbox    = tk::Listbox(&frame);
+        auto listbox    = tk::Listbox(frame);
         listbox
             .insert(0, "Apple")
             .insert(1, "Banana")
             .insert(2, "Cherry")
             .pack();
 
-        auto text       = tk::Text(&frame);
+        auto text       = tk::Text(frame);
         text.pack({{"side", "left"}, {"fill", "both"}, {"expand", "true"}});
 
-        auto scrollbar  = tk::Scrollbar(&frame);
+        auto scrollbar  = tk::Scrollbar(frame);
         scrollbar
             .pack({{"side", "right"}, {"fill", "y"}});
 
@@ -51,7 +51,7 @@ int main()
                 .yview(arg);
         });
 
-        auto button     = ttk::Button(&frame);
+        auto button     = ttk::Button(frame);
         button
             .text("Click Me")
             .command([&text](){ 
@@ -61,12 +61,12 @@ int main()
             })
             .pack();
 
-        auto toplevel   = tk::Toplevel(&tk);
+        auto toplevel   = tk::Toplevel(tk);
         toplevel
             .title("Sub Window")
             .geometry("400x300");
 
-        auto canvas     = tk::Canvas(&toplevel);
+        auto canvas     = tk::Canvas(toplevel);
         canvas
             .width(100)
             .height(100)
@@ -84,16 +84,16 @@ int main()
 
         canvas.after(1000, after_func);
 
-        auto notebook   = ttk::Notebook(&toplevel);
+        auto notebook   = ttk::Notebook(toplevel);
         notebook.pack();
 
-        auto page1      = tk::Frame(&notebook);
+        auto page1      = tk::Frame(notebook);
         page1
             .width(200)
             .height(200)
             .pack();
 
-        auto button_p1  = ttk::Button(&page1);
+        auto button_p1  = ttk::Button(page1);
         button_p1
             .text("Button1")
             .command([](){
@@ -103,18 +103,18 @@ int main()
             })
             .pack();
 
-        auto page2      = tk::Frame(&notebook);
+        auto page2      = tk::Frame(notebook);
         page2
             .width(200)
             .height(200)
             .pack();
 
-        auto combo_p2   = ttk::Combobox(&page2);
+        auto combo_p2   = ttk::Combobox(page2);
         combo_p2
             .values({"AAA", "BBB", "CCC"})
             .pack();
 
-        auto scale_p2   = tk::Scale(&page2);
+        auto scale_p2   = tk::Scale(page2);
         scale_p2
             .from(1.0)
             .to(10.0)

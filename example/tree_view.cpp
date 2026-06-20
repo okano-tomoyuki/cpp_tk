@@ -11,7 +11,7 @@ int main()
     tk::Tk root;
 
     // --- Treeview 作成 ---
-    ttk::Treeview tv(&root, {{"columns", "name age"}});
+    ttk::Treeview tv(root, {{"columns", "name age"}});
 
     // 列ヘッダ
     tv.heading("#0", {{"text", "ID"}});

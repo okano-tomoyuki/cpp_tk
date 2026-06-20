@@ -36,7 +36,7 @@ int main()
     app
         .title("Eyes");
 
-    auto canvas = tk::Canvas(&app);
+    auto canvas = tk::Canvas(app);
 
     canvas
         .width(500)
