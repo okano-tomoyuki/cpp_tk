@@ -2342,7 +2342,7 @@ Sizegrip::Sizegrip(Widget* parent, const std::map<std::string, ArgValue>& option
 }
 
 Treeview::Treeview(Widget* parent, const std::map<std::string, ArgValue>& options)
-    : Widget(parent, "ttk::treeview", "ttk_tree")
+    : Widget(parent, "ttk::treeview", "tv")
 {
     config(options);
 }
@@ -2367,6 +2367,13 @@ Treeview& Treeview::erase(const std::string& iid)
 
 Treeview& Treeview::item(const std::string& iid, const std::map<std::string, ArgValue>& options)
 {
+    if (options.empty())
+    {
+        // getter 的な使い方をしたい場合は、必要に応じて別メソッドを追加してもよい
+        interp_->invoke({full_name_, "item", iid});
+        return *this;
+    }
+
     std::vector<ArgValue> words = {full_name_, "item", iid};
     for (const auto& kv : options)
     {
@@ -2403,13 +2410,127 @@ Treeview& Treeview::column(const std::string& column, const std::map<std::string
 
 std::vector<std::string> Treeview::selection() const
 {
-    auto result = interp_->invoke({full_name_, "selection"});
-    std::vector<std::string> ids;
-    std::istringstream iss(result);
-    std::string id;
-    while (iss >> id)
-        ids.push_back(id);
-    return ids;
+    auto ret = interp_->invoke({full_name_, "selection"});
+
+    std::vector<std::string> out;
+    std::istringstream iss(ret);
+    std::string token;
+
+    while (iss >> token)
+        out.push_back(token);
+
+    return out;
+}
+
+Treeview& Treeview::set(const std::string& iid, const std::string& column, const ArgValue& value)
+{
+    interp_->invoke({full_name_, "set", iid, column, value});
+    return *this;
+}
+
+std::string Treeview::set(const std::string& iid, const std::string& column) const
+{
+    return interp_->invoke({full_name_, "set", iid, column});
+}
+
+Treeview& Treeview::move(const std::string& iid, const std::string& parent, const std::string& index)
+{
+    interp_->invoke({full_name_, "move", iid, parent, index});
+    return *this;
+}
+
+Treeview& Treeview::detach(const std::string& iid)
+{
+    interp_->invoke({full_name_, "detach", iid});
+    return *this;
+}
+
+Treeview& Treeview::reattach(const std::string& iid, const std::string& parent, const std::string& index)
+{
+    interp_->invoke({full_name_, "reattach", iid, parent, index});
+    return *this;
+}
+
+std::vector<std::string> Treeview::get_children(const std::string& iid) const
+{
+    auto ret = interp_->invoke({full_name_, "children", iid});
+    std::vector<std::string> out;
+    std::istringstream iss(ret);
+    std::string token;
+
+    while (iss >> token)
+        out.push_back(token);
+
+    return out;
+}
+
+std::string Treeview::parent(const std::string& iid) const
+{
+    return interp_->invoke({full_name_, "parent", iid});
+}
+
+int Treeview::index(const std::string& iid) const
+{
+    auto ret = interp_->invoke({full_name_, "index", iid});
+    return std::stoi(ret);
+}
+
+Treeview& Treeview::focus(const std::string& iid)
+{
+    interp_->invoke({full_name_, "focus", iid});
+    return *this;
+}
+
+std::string Treeview::focus() const
+{
+    return interp_->invoke({full_name_, "focus"});
+}
+
+Treeview& Treeview::tag_configure(const std::string& tag, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {full_name_, "tag", "configure", tag};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    interp_->invoke(words);
+    return *this;
+}
+
+Treeview& Treeview::tag_bind(const std::string& tag, const std::string& event, std::function<void(const Event&)> callback)
+{
+    auto cb_name = sanitize(full_name()) + "_tag_" + sanitize(tag) + "_" + sanitize(event);
+
+    interp_->register_event_callback(cb_name, callback);
+
+    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+
+    interp_->invoke({full_name_, "tag", "bind", tag, event, script});
+    return *this;
+}
+
+std::string Treeview::identify_row(int y) const
+{
+    return interp_->invoke({full_name_, "identify", "row", y});
+}
+
+std::string Treeview::identify_column(int x) const
+{
+    return interp_->invoke({full_name_, "identify", "column", x});
+}
+
+std::vector<int> Treeview::bbox(const std::string& iid, const std::string& column) const
+{
+    auto ret = interp_->invoke({full_name_, "bbox", iid, column});
+    std::vector<int> out;
+    std::istringstream iss(ret);
+    int v;
+
+    while (iss >> v)
+        out.push_back(v);
+
+    return out;
 }
 
 } // ttk

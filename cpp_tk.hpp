@@ -1045,12 +1045,42 @@ public:
     Treeview& erase(const std::string& iid);
 
     Treeview& item(const std::string& iid, const std::map<std::string, ArgValue>& options = {});
-
+    
     Treeview& heading(const std::string& column, const std::map<std::string, ArgValue>& options = {});
 
     Treeview& column(const std::string& column, const std::map<std::string, ArgValue>& options = {});
 
     std::vector<std::string> selection() const;
+
+    Treeview& set(const std::string& iid, const std::string& column, const ArgValue& value);
+
+    std::string set(const std::string& iid, const std::string& column) const;
+
+    Treeview& move(const std::string& iid, const std::string& parent, const std::string& index);
+
+    Treeview& detach(const std::string& iid);
+
+    Treeview& reattach(const std::string& iid, const std::string& parent, const std::string& index);
+
+    std::vector<std::string> get_children(const std::string& iid = "") const;
+
+    std::string parent(const std::string& iid) const;
+
+    int index(const std::string& iid) const;
+
+    Treeview& focus(const std::string& iid);
+    
+    std::string focus() const;
+
+    Treeview& tag_configure(const std::string& tag, const std::map<std::string, ArgValue>& options);
+
+    Treeview& tag_bind(const std::string& tag, const std::string& event, std::function<void(const Event&)> callback);
+
+    std::string identify_row(int y) const;
+
+    std::string identify_column(int x) const;
+
+    std::vector<int> bbox(const std::string& iid, const std::string& column = "") const;
 };
 
 } // ttk
