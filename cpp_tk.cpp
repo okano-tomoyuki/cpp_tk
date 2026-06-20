@@ -57,22 +57,6 @@ std::string sanitize(const std::string& s)
     return ret;
 }
 
-std::string escape_tcl_string(const std::string& s)
-{
-    std::string out;
-    out.reserve(s.size());
-
-    for (char c : s) 
-    {
-        if (c == '"' || c == '\\' || c == '$' || c == '[' || c == ']' || c == '{' || c == '}') 
-        {
-            out.push_back('\\');
-        }
-        out.push_back(c);
-    }
-    return out;
-}
-
 // ArgValue を対応する Tcl_Obj* に変換する内部ヘルパー
 Tcl_Obj* make_obj(Tcl_Interp* interp, const cpp_tk::ArgValue& v)
 {
@@ -365,32 +349,6 @@ ArgValue::~ArgValue()
 ArgValue::ValueType ArgValue::type() const
 {
     return type_;
-}
-
-std::string ArgValue::to_tcl() const
-{
-    if (type_ == ValueType::STRING) 
-    {
-        return "\"" + escape_tcl_string(*str_) + "\"";
-    }
-    else if (type_ == ValueType::INT) 
-    {
-        return std::to_string(i_);
-    }
-    else if (type_ == ValueType::DOUBLE) 
-    {
-        return std::to_string(d_);
-    }
-    else if (type_ == ValueType::BOOL) 
-    {
-        return b_ ? "1" : "0";
-    }
-    else if (type_ == ValueType::BYTES)
-    {
-        // バイナリデータは to_tcl() では表現できない。to_obj() を使用のこと。
-        return "";
-    }
-    return "";
 }
 
 void ArgValue::cleanup()
@@ -798,6 +756,25 @@ std::vector<std::string> Widget::winfo_children() const
 Interpreter* Widget::interp()
 {
     return interp_;
+}
+
+PhotoImage::PhotoImage(Widget* parent, const std::map<std::string, ArgValue>& options)
+    : interp_(parent->interp())
+    , name_("img_" + id)
+{
+    std::vector<ArgValue> words = {"image", "create", "photo", name_};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+
+    interp_->invoke(words);
+}
+
+const std::string& PhotoImage::name() const
+{
+    return name_;
 }
 
 Tk::Tk()

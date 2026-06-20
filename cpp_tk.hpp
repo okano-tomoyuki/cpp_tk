@@ -130,8 +130,6 @@ public:
 
     ValueType type() const;
 
-    std::string to_tcl() const;
-
     // 内部 Tcl_Obj 変換用アクセサ
     int                            as_int()    const { return i_; }
     double                         as_double() const { return d_; }
@@ -248,6 +246,19 @@ public:
     void trace(std::function<void(const double&)> callback);
 
 };
+
+class PhotoImage : public Object
+{
+public:
+    explicit PhotoImage(Widget* parent, const std::map<std::string, ArgValue>& options = {});
+
+    const std::string& name() const;
+
+private:
+    Interpreter* interp_;
+    std::string  name_;
+};
+
 
 class Widget : public Object
 {
