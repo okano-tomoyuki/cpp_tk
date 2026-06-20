@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 #include <iostream>
+#include <array>
 
 #include <tk.h>
 #include <tcl.h>
@@ -224,6 +225,7 @@ public:
                 e.keycode   = safe_stol(argv[7]);
                 e.character = argv[8];
                 e.type      = argv[9];
+                e.delta     = safe_stol(argv[10]);
                 it->second(e);
             }
             return TCL_OK;
@@ -510,6 +512,14 @@ Widget& Widget::pack(const std::map<std::string, ArgValue> &options)
     return *this;
 }
 
+Widget& Widget::pack_forget()
+{
+    std::ostringstream oss;
+    oss << "pack forget " << full_name();
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
 Widget& Widget::grid(const std::map<std::string, ArgValue>& options)
 {
     std::ostringstream oss;
@@ -518,6 +528,14 @@ Widget& Widget::grid(const std::map<std::string, ArgValue>& options)
     {
         oss << " -" << kv.first << " " << kv.second.to_tcl();
     }
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
+Widget& Widget::grid_forget()
+{
+    std::ostringstream oss;
+    oss << "grid forget " << full_name();
     interp_->evaluate(oss.str());
     return *this;
 }
@@ -534,8 +552,21 @@ Widget& Widget::place(const std::map<std::string, ArgValue> &options)
     return *this;
 }
 
+Widget& Widget::place_forget()
+{
+    std::ostringstream oss;
+    oss << "place forget " << full_name();
+    interp_->evaluate(oss.str());
+    return *this;
+}
+
 Widget& Widget::config(const std::map<std::string, ArgValue> &option)
 {
+    if (option.empty())
+    {
+        return *this;
+    }
+
     std::ostringstream oss;
     oss << full_name() << " configure";
     for (const auto &kv : option)
@@ -595,7 +626,7 @@ Widget& Widget::bind(const std::string& event, std::function<void(const Event&)>
 {
     auto cb_name =  sanitize(full_name()) + "_" + sanitize(event) + "_bind_cb";
     interp_->register_event_callback(cb_name, callback);
-    auto cmd = "bind " + full_name() + " " + event + " {" + cb_name + " %x %y %X %Y %W %K %k %c %t}";
+    auto cmd = "bind " + full_name() + " " + event + " {" + cb_name + " %x %y %X %Y %W %K %k %c %t %D}";
     interp_->evaluate(cmd);
     return *this;
 }
@@ -857,9 +888,11 @@ void Tk::quit()
     interp_->evaluate("set forever 1");
 }
 
-Checkbutton::Checkbutton(Widget* parent)
+Checkbutton::Checkbutton(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "checkbutton", "chk")
-{}
+{
+    config(options);
+}
 
 Checkbutton& Checkbutton::text(const std::string& text)
 {
@@ -881,9 +914,11 @@ Checkbutton& Checkbutton::command(std::function<void()> callback)
     return *this;
 }
 
-Frame::Frame(Widget *parent)
+Frame::Frame(Widget *parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "frame", "f")
-{}
+{
+    config(options);
+}
 
 Frame& Frame::width(const int &width)
 {
@@ -897,9 +932,16 @@ Frame& Frame::height(const int &height)
     return *this;
 }
 
-Toplevel::Toplevel(Widget *interp)
+Frame& Frame::grid_propagate(const bool& value)
+{
+    interp_->evaluate("grid propagate " + full_name() + " " + std::to_string(value ? 1 : 0));
+    return *this;
+}
+
+Toplevel::Toplevel(Widget *interp, const std::map<std::string, ArgValue>& options)
     : Widget(interp, "toplevel")
 {
+    config(options);
     protocol("WM_DELETE_WINDOW", [this](){destroy();});
 }
 
@@ -1028,9 +1070,11 @@ Toplevel& Toplevel::iconbitmap(const std::string& bitmap_path)
     return *this;
 }
 
-Button::Button(Widget *parent)
+Button::Button(Widget *parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "button", "b")
-{}
+{
+    config(options);
+}
 
 Button& Button::width(const int& width)
 {
@@ -1058,9 +1102,11 @@ Button& Button::command(std::function<void()> callback)
     return *this;
 }
 
-Canvas::Canvas(Widget *widget)
+Canvas::Canvas(Widget *widget, const std::map<std::string, ArgValue>& options)
     : Widget(widget, "canvas", "c")
-{}
+{
+    config(options);
+}
 
 Canvas& Canvas::itemconfig(const std::string& id_or_tag, const std::map<std::string, ArgValue>& options)
 {
@@ -1072,6 +1118,26 @@ Canvas& Canvas::itemconfig(const std::string& id_or_tag, const std::map<std::str
     }
     interp_->evaluate(oss.str());
     return *this;
+}
+
+std::string Canvas::create_line(const std::vector<std::array<double, 2>>& points, const std::map<std::string, ArgValue>& options)
+{
+    std::ostringstream oss;
+    oss << full_name()
+        << " " << "create"
+        << " " << "line";
+
+    for (const std::array<double, 2>& point : points)
+    {
+        oss << " " << point[0] << " " << point[1];
+    }
+
+    for (const auto &kv : options)
+    {
+        oss << " -" << kv.first << " " << kv.second.to_tcl();
+    }
+
+    return interp_->evaluate(oss.str());
 }
 
 std::string Canvas::create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options)
@@ -1309,10 +1375,12 @@ Canvas& Canvas::height(const int &height)
     return *this;
 }
 
-Entry::Entry(Widget *parent)
+Entry::Entry(Widget *parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "entry", "e") 
     , text_var_(nullptr)
-{}
+{
+    config(options);
+}
 
 Entry& Entry::textvariable(Var* var)
 {
@@ -1390,18 +1458,23 @@ std::string Entry::get() const
     return ret;
 }
 
-Label::Label(Widget *parent)
-    : Widget(parent, "label", "l") {}
+Label::Label(Widget *parent, const std::map<std::string, ArgValue>& options)
+    : Widget(parent, "label", "l") 
+{
+    config(options);
+}
 
 Label& Label::text(const std::string &text)
 {
-    config({{"text", "\"" +  text + "\""}});
+    config({{"text", text}});
     return *this;
 }
 
-Listbox::Listbox(Widget* parent)
+Listbox::Listbox(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "listbox", "listbox") 
-{}
+{
+    config(options);
+}
 
 Listbox& Listbox::insert(int index, const std::string& item) 
 {
@@ -1534,9 +1607,11 @@ PanedWindow& PanedWindow::forget(Widget* child)
     return *this;
 }
 
-Radiobutton::Radiobutton(Widget* parent)
+Radiobutton::Radiobutton(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "radiobutton", "rb")
-{}
+{
+    config(options);
+}
 
 Radiobutton& Radiobutton::text(const std::string& text)
 {
@@ -1564,9 +1639,11 @@ Radiobutton& Radiobutton::command(std::function<void()> callback)
     return *this;
 }
 
-Scale::Scale(Widget* parent)
+Scale::Scale(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "scale", "scale") 
-{}
+{
+    config(options);
+}
     
 Scale& Scale::from(double val) 
 { 
@@ -1594,9 +1671,11 @@ Scale& Scale::command(std::function<void(const double&)> callback)
     return *this;
 }
 
-Scrollbar::Scrollbar(Widget* parent) 
+Scrollbar::Scrollbar(Widget* parent, const std::map<std::string, ArgValue>& options) 
     : Widget(parent, "scrollbar", "scrollbar") 
-{}
+{
+    config(options);
+}
 
 Scrollbar& Scrollbar::orient(const std::string& dir) 
 {
@@ -1618,9 +1697,11 @@ Scrollbar& Scrollbar::set(const std::string& args)
     return *this;
 }
 
-Spinbox::Spinbox(Widget* parent)
+Spinbox::Spinbox(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "spinbox", "spinbox")
-{}
+{
+    config(options);
+}
 
 Spinbox& Spinbox::from(double val)
 {
@@ -1654,9 +1735,11 @@ Spinbox& Spinbox::command(std::function<void()> callback)
     return *this;
 }
 
-Text::Text(Widget* parent) 
+Text::Text(Widget* parent, const std::map<std::string, ArgValue>& options) 
     : Widget(parent, "text", "text") 
-{}
+{
+    config(options);
+}
 
 Text& Text::insert(const std::string& index, const std::string& text) 
 {
@@ -1821,9 +1904,11 @@ const std::string& Font::name() const
     return name_;
 }
 
-Button::Button(Widget *parent)
+Button::Button(Widget *parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::button", "ttk_button")
-{}
+{
+    config(options);
+}
 
 Button& Button::width(const int& width)
 {
@@ -1857,9 +1942,11 @@ Button& Button::font(const Font& font)
     return *this;    
 }
 
-Checkbutton::Checkbutton(Widget* parent)
+Checkbutton::Checkbutton(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::checkbutton", "ttk_checkbutton")
-{}
+{
+    config(options);
+}
 
 Checkbutton& Checkbutton::text(const std::string& text)
 {
@@ -1869,6 +1956,7 @@ Checkbutton& Checkbutton::text(const std::string& text)
 
 Checkbutton& Checkbutton::variable(Var* var)
 {
+
     config({{"variable", var->name()}});
     return *this;
 }
@@ -1881,17 +1969,23 @@ Checkbutton& Checkbutton::command(std::function<void()> callback)
     return *this;
 }
 
-Combobox::Combobox(Widget* parent) 
+Combobox::Combobox(Widget* parent, const std::map<std::string, ArgValue>& options) 
     : Widget(parent, "ttk::combobox", "ttk_combobox")
     , text_var_(nullptr)
-{}
+{
+    config(options);
+}
 
 Combobox& Combobox::values(const std::vector<std::string>& items) 
 {
-    std::string list = "{";
-    for (const auto& item : items) list += "{" + item + "} ";
-    list += "}";
-    config({{"values", list}});
+    std::ostringstream oss;
+    oss << full_name() << " configure -values {";
+    for (const auto& item : items)
+    {
+        oss << "\"" << escape_tcl_string(item) << "\" ";
+    }
+    oss << "}";
+    interp_->evaluate(oss.str());
     return *this;
 }
 
@@ -1932,10 +2026,54 @@ Combobox& Combobox::font(const Font& font)
     return *this;
 }
 
-Entry::Entry(Widget *parent)
+Combobox& Combobox::set(const std::string& value) 
+{
+    if (text_var_)
+    {
+        text_var_->set_var(value);
+        return *this;
+    }
+
+    erase("0", "end");
+    insert("0", value);
+    return *this;
+}
+
+Combobox& Combobox::insert(const std::string& index, const std::string& text) 
+{
+    interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
+    return *this;
+}
+
+std::string Combobox::get() const 
+{
+    return interp_->evaluate(full_name() + " get " );
+}
+
+Combobox& Combobox::erase(const std::string& start, const std::string& end) 
+{
+    interp_->evaluate(full_name() + " delete " + start + " " + end);
+    return *this;
+}
+
+int Combobox::current() const
+{
+    const auto val = interp_->evaluate(full_name() + " current");
+    return safe_stol(val.c_str());
+}
+
+Combobox& Combobox::current(const int& idx)
+{
+    interp_->evaluate(full_name() + " current " + std::to_string(idx));
+    return *this;    
+}
+
+Entry::Entry(Widget *parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::entry", "ttk_entry") 
     , text_var_(nullptr)
-{}
+{
+    config(options);
+}
 
 Entry& Entry::textvariable(Var* var)
 {
@@ -2013,9 +2151,11 @@ std::string Entry::get() const
     return ret;
 }
 
-Frame::Frame(Widget *parent)
+Frame::Frame(Widget *parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::frame", "ttk_frame")
-{}
+{
+    config(options);
+}
 
 Frame& Frame::width(const int &width)
 {
@@ -2029,13 +2169,16 @@ Frame& Frame::height(const int &height)
     return *this;
 }
 
-Label::Label(Widget *parent)
+
+Label::Label(Widget *parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::label", "tl") 
-{}
+{
+    config(options);
+}
 
 Label& Label::text(const std::string &text)
 {
-    config({{"text", "\"" +  text + "\""}});
+    config({{"text", text}});
     return *this;
 }
 
@@ -2057,9 +2200,11 @@ Label& Label::font(const Font& font)
     return *this;
 }
 
-Labelframe::Labelframe(Widget* parent)
+Labelframe::Labelframe(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::labelframe", "ttk_labelframe")
-{}
+{
+    config(options);
+}
 
 Labelframe& Labelframe::text(const std::string& text)
 {
@@ -2067,13 +2212,18 @@ Labelframe& Labelframe::text(const std::string& text)
     return *this;
 }
 
-Notebook::Notebook(Widget* parent) 
+Notebook::Notebook(Widget* parent, const std::map<std::string, ArgValue>& options) 
     : Widget(parent, "ttk::notebook", "ttk_notebook") 
-{}
-
-Notebook& Notebook::add_tab(Widget& child, const std::string& label) 
 {
-    interp_->evaluate(full_name() + " add " + child.full_name() + " -text {" + label + "}");
+    config(options);
+}
+
+Notebook& Notebook::add_tab(Widget* child, const std::string& label) 
+{
+    if (child)
+    {
+        interp_->evaluate(full_name() + " add " + child->full_name() + " -text {" + escape_tcl_string(label) + "}");
+    }
     return *this;
 }
 
@@ -2083,9 +2233,11 @@ Notebook& Notebook::select(int index)
     return *this;
 }
 
-Progressbar::Progressbar(Widget* parent)
+Progressbar::Progressbar(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::progressbar", "ttk_progress")
-{}
+{
+    config(options);
+}
 
 Progressbar& Progressbar::mode(const std::string& mode)
 {
@@ -2117,9 +2269,11 @@ Progressbar& Progressbar::step(double amount)
     return *this;
 }
 
-Radiobutton::Radiobutton(Widget* parent)
+Radiobutton::Radiobutton(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::radiobutton", "ttk_radiobutton")
-{}
+{
+    config(options);
+}
 
 Radiobutton& Radiobutton::text(const std::string& text)
 {
@@ -2147,13 +2301,15 @@ Radiobutton& Radiobutton::command(std::function<void()> callback)
     return *this;
 }
 
-Separator::Separator(Widget* parent)
+Separator::Separator(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::separator", "ttk_separator") 
 {}
 
-Scale::Scale(Widget* parent)
+Scale::Scale(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::scale", "ttk_scale") 
-{}
+{
+    config(options);
+}
     
 Scale& Scale::from(double val) 
 { 
@@ -2181,9 +2337,11 @@ Scale& Scale::command(std::function<void(const double&)> callback)
     return *this;
 }
 
-Scrollbar::Scrollbar(Widget* parent) 
+Scrollbar::Scrollbar(Widget* parent, const std::map<std::string, ArgValue>& options) 
     : Widget(parent, "ttk::scrollbar", "ttk_scrollbar") 
-{}
+{
+    config(options);
+}
 
 Scrollbar& Scrollbar::orient(const std::string& dir) 
 {
@@ -2205,9 +2363,11 @@ Scrollbar& Scrollbar::set(const std::string& args)
     return *this;
 }
 
-Spinbox::Spinbox(Widget* parent)
+Spinbox::Spinbox(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::spinbox", "ttk_spinbox")
-{}
+{
+    config(options);
+}
 
 Spinbox& Spinbox::from(double val)
 {
@@ -2241,13 +2401,17 @@ Spinbox& Spinbox::command(std::function<void()> callback)
     return *this;
 }
 
-Sizegrip::Sizegrip(Widget* parent)
+Sizegrip::Sizegrip(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::sizegrip", "ttk_sizegrip")
-{}
+{
+    config(options);
+}
 
-Treeview::Treeview(Widget* parent)
+Treeview::Treeview(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::treeview", "ttk_tree")
-{}
+{
+    config(options);
+}
 
 Treeview& Treeview::insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, ArgValue>& options)
 {

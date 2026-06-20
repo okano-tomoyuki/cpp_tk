@@ -6,6 +6,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
+#include <array>
 
 namespace cpp_tk
 {
@@ -86,6 +87,8 @@ struct Event
     std::string keysym;
     int         keycode;
     std::string type;
+    int         delta;
+    
 };
 
 class Interpreter;
@@ -241,13 +244,21 @@ public:
 
     Widget(Widget* parent, const std::string &type, const std::string& name="");
 
+    virtual ~Widget() = default;
+
     const std::string& full_name() const;
 
     Widget& pack(const std::map<std::string, ArgValue> &options = {});
 
+    Widget& pack_forget();
+
     Widget& grid(const std::map<std::string, ArgValue> &options = {});
 
+    Widget& grid_forget();
+
     Widget& place(const std::map<std::string, ArgValue> &option = {});
+
+    Widget& place_forget();
 
     Widget& config(const std::string& name, const ArgValue& value);
 
@@ -358,12 +369,14 @@ class Frame : public Widget
 
 public:
 
-    explicit Frame(Widget *parent);
+    explicit Frame(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Frame& width(const int &width);
 
     Frame& height(const int &height);
 
+    Frame& grid_propagate(const bool& value);
+    
 };
 
 class Toplevel : public Widget
@@ -371,7 +384,7 @@ class Toplevel : public Widget
 
 public:
 
-    explicit Toplevel(Widget *interp);
+    explicit Toplevel(Widget *interp, const std::map<std::string, ArgValue>& options = {});
 
     Toplevel& title(const std::string &title_text);
 
@@ -419,7 +432,7 @@ class Button : public Widget
 {
 
 public:
-    explicit Button(Widget *parent);
+    explicit Button(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Button& width(const int& width);
 
@@ -436,9 +449,11 @@ class Canvas : public Widget
 
 public:
 
-    explicit Canvas(Widget *widget);
+    explicit Canvas(Widget *widget, const std::map<std::string, ArgValue>& options = {});
 
     Canvas& itemconfig(const std::string& id_or_tag, const std::map<std::string, ArgValue>& options);
+
+    std::string create_line(const std::vector<std::array<double, 2>>& points, const std::map<std::string, ArgValue>& options = {});
 
     std::string create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options = {});
 
@@ -489,13 +504,14 @@ class Checkbutton : public Widget
 
 public: 
 
-    explicit Checkbutton(Widget* parent); 
+    explicit Checkbutton(Widget* parent, const std::map<std::string, ArgValue>& options = {}); 
     
     Checkbutton& text(const std::string& text); 
     
     Checkbutton& variable(Var* var); 
     
     Checkbutton& command(std::function<void()> callback); 
+
 
 };
 
@@ -504,7 +520,7 @@ class Entry : public Widget
 
 public:
 
-    explicit Entry(Widget *parent);
+    explicit Entry(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Entry& textvariable(Var* var);
 
@@ -533,7 +549,7 @@ class Label : public Widget
 
 public:
 
-    explicit Label(Widget *parent);
+    explicit Label(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Label& text(const std::string &text);
 };
@@ -543,7 +559,7 @@ class Listbox : public Widget
 
 public:
 
-    explicit Listbox(Widget* parent);
+    explicit Listbox(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Listbox& insert(int index, const std::string& item);
 
@@ -615,7 +631,7 @@ class Radiobutton : public Widget
     
 public: 
 
-    explicit Radiobutton(Widget* parent); 
+    explicit Radiobutton(Widget* parent, const std::map<std::string, ArgValue>& options = {}); 
     
     Radiobutton& text(const std::string& text); 
     
@@ -632,7 +648,7 @@ class Scale : public Widget
 
 public:
 
-    explicit Scale(Widget* parent);
+    explicit Scale(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Scale& from(double val);
 
@@ -649,7 +665,7 @@ class Scrollbar : public Widget
 
 public:
 
-    explicit Scrollbar(Widget* parent);
+    explicit Scrollbar(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Scrollbar& orient(const std::string& dir);
 
@@ -664,7 +680,7 @@ class Spinbox : public Widget
     
 public: 
 
-    explicit Spinbox(Widget* parent); 
+    explicit Spinbox(Widget* parent, const std::map<std::string, ArgValue>& options = {}); 
     
     Spinbox& from(double val); 
     
@@ -683,7 +699,7 @@ class Text : public Widget
 
 public:
 
-    explicit Text(Widget* parent);
+    explicit Text(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Text& insert(const std::string& index, const std::string& text);
 
@@ -749,7 +765,7 @@ class Button : public Widget
 
 public:
 
-    explicit Button(Widget *parent);
+    explicit Button(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Button& width(const int& width);
 
@@ -768,13 +784,14 @@ class Checkbutton : public Widget
 
 public: 
 
-    explicit Checkbutton(Widget* parent); 
+    explicit Checkbutton(Widget* parent, const std::map<std::string, ArgValue>& options = {}); 
     
     Checkbutton& text(const std::string& text); 
     
     Checkbutton& variable(Var* var); 
     
     Checkbutton& command(std::function<void()> callback); 
+
 
 };
 
@@ -783,7 +800,7 @@ class Combobox : public Widget
 
 public:
 
-    explicit Combobox(Widget* parent);
+    explicit Combobox(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Combobox& values(const std::vector<std::string>& items);
 
@@ -799,9 +816,23 @@ public:
 
     Combobox& font(const Font& font);
 
+    Combobox& set(const std::string& value);
+
+    Combobox& insert(const std::string& index, const std::string& text);
+    
+    std::string get() const;
+
+    Combobox& erase(const std::string& start, const std::string& end);
+
+    int current() const;
+
+    Combobox& current(const int& idx);
+
+
 private:
 
     Var* text_var_;
+    
 };
 
 class Entry : public Widget
@@ -809,7 +840,7 @@ class Entry : public Widget
 
 public:
 
-    explicit Entry(Widget *parent);
+    explicit Entry(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Entry& textvariable(Var* var);
 
@@ -840,7 +871,7 @@ class Frame : public Widget
 
 public:
 
-    explicit Frame(Widget *parent);
+    explicit Frame(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Frame& width(const int &width);
 
@@ -853,9 +884,9 @@ class Notebook : public Widget
 
 public:
     
-    explicit Notebook(Widget* parent);
+    explicit Notebook(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
-    Notebook& add_tab(Widget& child, const std::string& label);
+    Notebook& add_tab(Widget* child, const std::string& label);
 
     Notebook& select(int index);
 };
@@ -865,7 +896,7 @@ class Label : public Widget
 
 public:
 
-    explicit Label(Widget *parent);
+    explicit Label(Widget *parent, const std::map<std::string, ArgValue>& options = {});
 
     Label& text(const std::string &text);
 
@@ -879,7 +910,7 @@ public:
 class Labelframe : public Widget
 {
 public:
-    explicit Labelframe(Widget* parent);
+    explicit Labelframe(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Labelframe& text(const std::string& text);
 };
@@ -887,7 +918,7 @@ public:
 class Progressbar : public Widget
 {
 public:
-    explicit Progressbar(Widget* parent);
+    explicit Progressbar(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Progressbar& mode(const std::string& mode);
 
@@ -906,7 +937,7 @@ class Radiobutton : public Widget
     
 public: 
 
-    explicit Radiobutton(Widget* parent); 
+    explicit Radiobutton(Widget* parent, const std::map<std::string, ArgValue>& options = {}); 
     
     Radiobutton& text(const std::string& text); 
     
@@ -921,7 +952,7 @@ public:
 class Separator : public Widget
 {
 public:
-    explicit Separator(Widget* parent);
+    explicit Separator(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 };
 
 class Scale : public Widget 
@@ -929,7 +960,7 @@ class Scale : public Widget
 
 public:
 
-    explicit Scale(Widget* parent);
+    explicit Scale(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Scale& from(double val);
 
@@ -946,7 +977,7 @@ class Scrollbar : public Widget
 
 public:
 
-    explicit Scrollbar(Widget* parent);
+    explicit Scrollbar(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Scrollbar& orient(const std::string& dir);
 
@@ -961,7 +992,7 @@ class Spinbox : public Widget
     
 public: 
 
-    explicit Spinbox(Widget* parent); 
+    explicit Spinbox(Widget* parent, const std::map<std::string, ArgValue>& options = {}); 
     
     Spinbox& from(double val); 
     
@@ -978,13 +1009,13 @@ public:
 class Sizegrip : public Widget
 {
 public:
-    explicit Sizegrip(Widget* parent);
+    explicit Sizegrip(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 };
 
 class Treeview : public Widget
 {
 public:
-    explicit Treeview(Widget* parent);
+    explicit Treeview(Widget* parent, const std::map<std::string, ArgValue>& options = {});
 
     Treeview& insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, ArgValue>& options = {});
 
