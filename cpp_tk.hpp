@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <vector>
 #include <array>
+#include <cstdint>
 
 namespace cpp_tk
 {
@@ -103,23 +104,26 @@ public:
         STRING,
         INT,
         DOUBLE,
-        BOOL
+        BOOL,
+        BYTES   // バイナリデータ (PhotoImage 等) 用
     };
 
     ArgValue();
-    
+
     ArgValue(const std::string& s);
-    
+
     ArgValue(const char* s);
-    
+
     ArgValue(int v);
-    
+
     ArgValue(double v);
-    
+
     ArgValue(bool v);
 
+    ArgValue(const std::vector<uint8_t>& bytes);
+
     ArgValue(const ArgValue& other);
-    
+
     ArgValue& operator=(const ArgValue& other);
 
     ~ArgValue();
@@ -128,15 +132,23 @@ public:
 
     std::string to_tcl() const;
 
+    // 内部 Tcl_Obj 変換用アクセサ
+    int                            as_int()    const { return i_; }
+    double                         as_double() const { return d_; }
+    bool                           as_bool()   const { return b_; }
+    const std::string&             as_string() const { return *str_; }
+    const std::vector<uint8_t>&    as_bytes()  const { return *bytes_; }
+
 private:
-    ValueType type_;
+    ValueType               type_;
     union 
     {
-        int i_;
-        double d_;
-        bool b_;
+        int     i_;
+        double  d_;
+        bool    b_;
     };
-    std::string* str_;
+    std::string*            str_;
+    std::vector<uint8_t>*   bytes_;
 
     void cleanup();
     void copy_from(const ArgValue& other);

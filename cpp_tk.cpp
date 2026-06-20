@@ -8,6 +8,8 @@
 #include <vector>
 #include <iostream>
 #include <array>
+#include <cstdint>
+
 
 #include <tk.h>
 #include <tcl.h>
@@ -71,6 +73,26 @@ std::string escape_tcl_string(const std::string& s)
     return out;
 }
 
+// ArgValue を対応する Tcl_Obj* に変換する内部ヘルパー
+Tcl_Obj* make_obj(Tcl_Interp* interp, const cpp_tk::ArgValue& v)
+{
+    switch (v.type())
+    {
+        case cpp_tk::ArgValue::ValueType::STRING:
+            return Tcl_NewStringObj(v.as_string().c_str(), (int)v.as_string().size());
+        case cpp_tk::ArgValue::ValueType::INT:
+            return Tcl_NewIntObj(v.as_int());
+        case cpp_tk::ArgValue::ValueType::DOUBLE:
+            return Tcl_NewDoubleObj(v.as_double());
+        case cpp_tk::ArgValue::ValueType::BOOL:
+            return Tcl_NewBooleanObj(v.as_bool() ? 1 : 0);
+        case cpp_tk::ArgValue::ValueType::BYTES:
+            return Tcl_NewByteArrayObj(v.as_bytes().data(), (int)v.as_bytes().size());
+        default:
+            return Tcl_NewObj();
+    }
+}
+
 }
 
 namespace cpp_tk
@@ -108,6 +130,32 @@ public:
             {
                 std::cerr << "Tcl Error: " << Tcl_GetStringResult(interp_) << std::endl;
             }
+        }
+        return Tcl_GetStringResult(interp_);
+    }
+
+    // ArgValue のリストをそのまま渡してコマンドを実行する。
+    // Tcl_Obj への変換は内部で行うため、呼び出し側は TCL API に依存しない。
+    std::string invoke(const std::vector<ArgValue>& words, bool* success = nullptr)
+    {
+        std::vector<Tcl_Obj*> objv;
+        objv.reserve(words.size());
+        for (const auto& w : words)
+            objv.push_back(make_obj(interp_, w));
+
+        for (auto* obj : objv)
+            Tcl_IncrRefCount(obj);
+
+        int code = Tcl_EvalObjv(interp_, (int)objv.size(), objv.data(), 0);
+
+        for (auto* obj : objv)
+            Tcl_DecrRefCount(obj);
+
+        if (success)
+        {
+            *success = (code == TCL_OK);
+            if (!*success)
+                std::cerr << "Tcl Error: " << Tcl_GetStringResult(interp_) << std::endl;
         }
         return Tcl_GetStringResult(interp_);
     }
@@ -249,39 +297,52 @@ private:
 ArgValue::ArgValue()
     : type_(ValueType::NONE)
     , str_(nullptr)
+    , bytes_(nullptr)
 {}
 
 ArgValue::ArgValue(const std::string& s)
     : type_(ValueType::STRING)
     , str_(new std::string(s))
+    , bytes_(nullptr)
 {}
 
 ArgValue::ArgValue(const char* s)
     : type_(ValueType::STRING)
     , str_(new std::string(s))
+    , bytes_(nullptr)
 {}
 
 ArgValue::ArgValue(int v)
     : type_(ValueType::INT)
     , i_(v)
     , str_(nullptr)
+    , bytes_(nullptr)
 {}
 
 ArgValue::ArgValue(double v)
     : type_(ValueType::DOUBLE)
     , d_(v)
     , str_(nullptr)
+    , bytes_(nullptr)
 {}
 
 ArgValue::ArgValue(bool v)
     : type_(ValueType::BOOL)
     , b_(v)
     , str_(nullptr)
+    , bytes_(nullptr)
+{}
+
+ArgValue::ArgValue(const std::vector<uint8_t>& bytes)
+    : type_(ValueType::BYTES)
+    , str_(nullptr)
+    , bytes_(new std::vector<uint8_t>(bytes))
 {}
 
 ArgValue::ArgValue(const ArgValue& other)
     : type_(ValueType::NONE)
     , str_(nullptr)
+    , bytes_(nullptr)
 {
     copy_from(other);
 }
@@ -324,6 +385,11 @@ std::string ArgValue::to_tcl() const
     {
         return b_ ? "1" : "0";
     }
+    else if (type_ == ValueType::BYTES)
+    {
+        // バイナリデータは to_tcl() では表現できない。to_obj() を使用のこと。
+        return "";
+    }
     return "";
 }
 
@@ -334,6 +400,11 @@ void ArgValue::cleanup()
         delete str_;
         str_ = nullptr;
     }
+    else if (type_ == ValueType::BYTES && bytes_)
+    {
+        delete bytes_;
+        bytes_ = nullptr;
+    }
     type_ = ValueType::NONE;
 }
 
@@ -343,23 +414,36 @@ void ArgValue::copy_from(const ArgValue& other)
 
     if (other.type_ == ValueType::STRING) 
     {
-        str_ = new std::string(*other.str_);
+        str_   = new std::string(*other.str_);
+        bytes_ = nullptr;
     }
     else if (other.type_ == ValueType::INT) 
     {
-        i_ = other.i_;
+        i_     = other.i_;
+        str_   = nullptr;
+        bytes_ = nullptr;
     }
     else if (other.type_ == ValueType::DOUBLE) 
     {
-        d_ = other.d_;
+        d_     = other.d_;
+        str_   = nullptr;
+        bytes_ = nullptr;
     }
     else if (other.type_ == ValueType::BOOL) 
     {
-        b_ = other.b_;
+        b_     = other.b_;
+        str_   = nullptr;
+        bytes_ = nullptr;
+    }
+    else if (other.type_ == ValueType::BYTES)
+    {
+        str_   = nullptr;
+        bytes_ = new std::vector<uint8_t>(*other.bytes_);
     }
     else 
     {
-        str_ = nullptr;
+        str_   = nullptr;
+        bytes_ = nullptr;
     }
 }
 
@@ -487,7 +571,7 @@ Widget::Widget(Widget *parent, const std::string &type, const std::string& name)
     {
         auto parent_name = (parent->full_name() == ".") ? "" : parent->full_name();
         full_name_ = parent_name + "." + (name.empty() ? type : name) + id;
-        interp_->evaluate(type + " " + full_name_);
+        interp_->invoke({type, full_name_});
     }
     else
     {
@@ -502,78 +586,72 @@ const std::string& Widget::full_name() const
 
 Widget& Widget::pack(const std::map<std::string, ArgValue> &options)
 {
-    std::ostringstream oss;
-    oss << "pack " << full_name();
+    std::vector<ArgValue> words = {"pack", full_name_};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Widget& Widget::pack_forget()
 {
-    std::ostringstream oss;
-    oss << "pack forget " << full_name();
-    interp_->evaluate(oss.str());
+    interp_->invoke({"pack", "forget", full_name_});
     return *this;
 }
 
 Widget& Widget::grid(const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << "grid " << full_name();
+    std::vector<ArgValue> words = {"grid", full_name_};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Widget& Widget::grid_forget()
 {
-    std::ostringstream oss;
-    oss << "grid forget " << full_name();
-    interp_->evaluate(oss.str());
+    interp_->invoke({"grid", "forget", full_name_});
     return *this;
 }
 
 Widget& Widget::place(const std::map<std::string, ArgValue> &options)
 {
-    std::ostringstream oss;
-    oss << "place " << full_name();
+    std::vector<ArgValue> words = {"place", full_name_};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Widget& Widget::place_forget()
 {
-    std::ostringstream oss;
-    oss << "place forget " << full_name();
-    interp_->evaluate(oss.str());
+    interp_->invoke({"place", "forget", full_name_});
     return *this;
 }
 
-Widget& Widget::config(const std::map<std::string, ArgValue> &option)
+Widget& Widget::config(const std::map<std::string, ArgValue> &options)
 {
-    if (option.empty())
+    if (options.empty())
     {
         return *this;
     }
 
-    std::ostringstream oss;
-    oss << full_name() << " configure";
-    for (const auto &kv : option)
+    std::vector<ArgValue> words = {full_name_, "configure"};
+    for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
@@ -585,147 +663,127 @@ Widget& Widget::config(const std::string& name, const ArgValue& value)
 
 Widget& Widget::grid_rowconfigure(int row, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << "grid rowconfigure " << full_name() << " " << row;
+    std::vector<ArgValue> words = {"grid", "rowconfigure", full_name_, row};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Widget& Widget::grid_columnconfigure(int column, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << "grid columnconfigure " << full_name() << " " << column;
+    std::vector<ArgValue> words = {"grid", "columnconfigure", full_name_, column};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 std::string Widget::cget(const std::string& name) const
 {
-    auto cmd = full_name() + " cget -" + name;
     auto ok  = false;
-    auto ret = interp_->evaluate(cmd, &ok);
-
+    auto ret = interp_->invoke({full_name_, "cget", "-" + name}, &ok);
     if (!ok)
-    {
-        ret  = "";
-        // Todo Error ハンドリング
-    }
-
+        ret = "";
     return ret;
 }
 
 Widget& Widget::bind(const std::string& event, std::function<void(const Event&)> callback)
 {
-    auto cb_name =  sanitize(full_name()) + "_" + sanitize(event) + "_bind_cb";
+    auto cb_name = sanitize(full_name()) + "_" + sanitize(event) + "_bind_cb";
     interp_->register_event_callback(cb_name, callback);
-    auto cmd = "bind " + full_name() + " " + event + " {" + cb_name + " %x %y %X %Y %W %K %k %c %t %D}";
-    interp_->evaluate(cmd);
+    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    interp_->invoke({"bind", full_name_, event, script});
     return *this;
 }
 
 std::string Widget::after(const int& ms, std::function<void()> callback)
 {
-    auto cb_name    = sanitize(full_name()) + "_after_cb_" + std::to_string(after_id_++);
+    auto cb_name = sanitize(full_name()) + "_after_cb_" + std::to_string(after_id_++);
     interp_->register_void_callback(cb_name, callback);
-    auto cmd        = "after " + std::to_string(ms) + " " + cb_name;
-    auto ok         = false;
-    auto ret        = interp_->evaluate(cmd, &ok);
-
-    if (!ok)
-    {
-        // Todo Error ハンドリング
-    }
-
+    auto ok  = false;
+    auto ret = interp_->invoke({"after", ms, cb_name}, &ok);
     return ret;
 }
 
 void Widget::after_idle(std::function<void()> callback)
 {
-    auto cb_name    = sanitize(full_name()) + "_after_idle_cb";
+    auto cb_name = sanitize(full_name()) + "_after_idle_cb";
     interp_->register_void_callback(cb_name, callback);
-    auto cmd        = "after idle " + cb_name;
-    auto ok         = false;
-    auto ret        = interp_->evaluate(cmd, &ok);
-
-    if (!ok)
-    {
-        // Todo Error ハンドリング
-    }
+    interp_->invoke({"after", "idle", cb_name});
 }
 
 void Widget::after_cancel(const std::string& id)
 {
-    interp_->evaluate("after cancel " + id);
+    interp_->invoke({"after", "cancel", id});
 }
 
 void Widget::destroy()
 {
-    interp_->evaluate("destroy " + full_name());
+    interp_->invoke({"destroy", full_name_});
 }
 
 int Widget::winfo_width() const
 {
-    auto ret = interp_->evaluate("winfo width " + full_name());
+    auto ret = interp_->invoke({"winfo", "width", full_name_});
     return safe_stol(ret.c_str());
 }
 
 int Widget::winfo_height() const
 {
-    auto ret = interp_->evaluate("winfo height " + full_name());
+    auto ret = interp_->invoke({"winfo", "height", full_name_});
     return safe_stol(ret.c_str());
 }
 
 int Widget::winfo_x() const
 {
-    auto ret = interp_->evaluate("winfo x " + full_name());
+    auto ret = interp_->invoke({"winfo", "x", full_name_});
     return safe_stol(ret.c_str());
 }
 
 int Widget::winfo_y() const
 {
-    auto ret = interp_->evaluate("winfo y " + full_name());
+    auto ret = interp_->invoke({"winfo", "y", full_name_});
     return safe_stol(ret.c_str());
 }
 
 int Widget::winfo_rootx() const
 {
-    auto ret = interp_->evaluate("winfo rootx " + full_name());
+    auto ret = interp_->invoke({"winfo", "rootx", full_name_});
     return safe_stol(ret.c_str());
 }
 
 int Widget::winfo_rooty() const
 {
-    auto ret = interp_->evaluate("winfo rooty " + full_name());
+    auto ret = interp_->invoke({"winfo", "rooty", full_name_});
     return safe_stol(ret.c_str());
 }
 
 bool Widget::winfo_exists() const
 {
-    auto ret = interp_->evaluate("winfo exists " + full_name());
+    auto ret = interp_->invoke({"winfo", "exists", full_name_});
     return safe_stol(ret.c_str()) != 0;
 }
 
 std::string Widget::winfo_class() const
 {
-    return interp_->evaluate("winfo class " + full_name());
+    return interp_->invoke({"winfo", "class", full_name_});
 }
 
 std::string Widget::winfo_toplevel() const
 {
-    return interp_->evaluate("winfo toplevel " + full_name());
+    return interp_->invoke({"winfo", "toplevel", full_name_});
 }
 
 std::vector<std::string> Widget::winfo_children() const
 {
-    auto result = interp_->evaluate("winfo children " + full_name());
+    auto result = interp_->invoke({"winfo", "children", full_name_});
 
     std::vector<std::string> children;
     std::istringstream iss(result);
@@ -755,126 +813,120 @@ Tk::Tk()
 
 Tk& Tk::title(const std::string& title)
 {
-    interp_->evaluate("wm title . \"" + title + "\"");
+    interp_->invoke({"wm", "title", ".", title});
     return *this;
 }
 
 Tk& Tk::geometry(const std::string &size)
 {
-    interp_->evaluate("wm geometry . " + size);
+    interp_->invoke({"wm", "geometry", ".", size});
     return *this;
 }
 
 std::string Tk::geometry() const
 {
-    return interp_->evaluate("wm geometry .");
+    return interp_->invoke({"wm", "geometry", "."});
 }
 
 Tk& Tk::protocol(const std::string& name, std::function<void()> handler) 
 {
     auto cb_name = "protocol_cb_" + sanitize(name);
     interp_->register_void_callback(cb_name, handler);
-    interp_->evaluate("wm protocol . " + name + " " + cb_name);
+    interp_->invoke({"wm", "protocol", ".", name, cb_name});
     return *this;
 }
 
 Tk& Tk::resizable(bool width, bool height)
 {
-    interp_->evaluate("wm resizable . " +
-        std::to_string(width ? 1 : 0) + " " +
-        std::to_string(height ? 1 : 0));
+    interp_->invoke({"wm", "resizable", ".", (int)(width ? 1 : 0), (int)(height ? 1 : 0)});
     return *this;
 }
 
 Tk& Tk::minsize(int width, int height)
 {
-    interp_->evaluate("wm minsize . " +
-        std::to_string(width) + " " +
-        std::to_string(height));
+    interp_->invoke({"wm", "minsize", ".", width, height});
     return *this;
 }
 
 Tk& Tk::maxsize(int width, int height)
 {
-    interp_->evaluate("wm maxsize . " +
-        std::to_string(width) + " " +
-        std::to_string(height));
+    interp_->invoke({"wm", "maxsize", ".", width, height});
     return *this;
 }
 
 Tk& Tk::iconify()
 {
-    interp_->evaluate("wm iconify .");
+    interp_->invoke({"wm", "iconify", "."});
     return *this;
 }
 
 Tk& Tk::deiconify()
 {
-    interp_->evaluate("wm deiconify .");
+    interp_->invoke({"wm", "deiconify", "."});
     return *this;
 }
 
 Tk& Tk::withdraw()
 {
-    interp_->evaluate("wm withdraw .");
+    interp_->invoke({"wm", "withdraw", "."});
     return *this;
 }
 
 Tk& Tk::state(const std::string& new_state)
 {
-    interp_->evaluate("wm state . " + new_state);
+    interp_->invoke({"wm", "state", ".", new_state});
     return *this;
 }
 
 std::string Tk::state() const
 {
-    return interp_->evaluate("wm state .");
+    return interp_->invoke({"wm", "state", "."});
 }
 
 Tk& Tk::attributes(const std::string& name, const std::string& value)
 {
-    interp_->evaluate("wm attributes . " + name + " " + value);
+    interp_->invoke({"wm", "attributes", ".", name, value});
     return *this;
 }
 
 std::string Tk::attributes(const std::string& name) const
 {
-    return interp_->evaluate("wm attributes . " + name);
+    return interp_->invoke({"wm", "attributes", ".", name});
 }
 
 Tk& Tk::lift()
 {
-    interp_->evaluate("raise .");
+    interp_->invoke({"raise", "."});
     return *this;
 }
 
 Tk& Tk::lower()
 {
-    interp_->evaluate("lower .");
+    interp_->invoke({"lower", "."});
     return *this;
 }
 
 Tk& Tk::grab_set()
 {
-    interp_->evaluate("grab set .");
+    interp_->invoke({"grab", "set", "."});
     return *this;
 }
 
 Tk& Tk::grab_release()
 {
-    interp_->evaluate("grab release .");
+    interp_->invoke({"grab", "release", "."});
     return *this;
 }
 
 Tk& Tk::iconphoto(const std::string& image_name)
 {
-    interp_->evaluate("wm iconphoto . -default " + image_name);
+    interp_->invoke({"wm", "iconphoto", ".", "-default", image_name});
     return *this;
 }
 
 Tk& Tk::iconbitmap(const std::string& bitmap_path)
 {
-    interp_->evaluate("wm iconbitmap . \"" + bitmap_path + "\"");
+    interp_->invoke({"wm", "iconbitmap", ".", bitmap_path});
     return *this;
 }
 
@@ -934,7 +986,7 @@ Frame& Frame::height(const int &height)
 
 Frame& Frame::grid_propagate(const bool& value)
 {
-    interp_->evaluate("grid propagate " + full_name() + " " + std::to_string(value ? 1 : 0));
+    interp_->invoke({"grid", "propagate", full_name_, (int)(value ? 1 : 0)});
     return *this;
 }
 
@@ -947,126 +999,120 @@ Toplevel::Toplevel(Widget *interp, const std::map<std::string, ArgValue>& option
 
 Toplevel& Toplevel::title(const std::string &title_text)
 {
-    interp_->evaluate("wm title " + full_name() + " \"" + title_text + "\"");
+    interp_->invoke({"wm", "title", full_name_, title_text});
     return *this;
 }
 
 Toplevel& Toplevel::geometry(const std::string &size)
 {
-    interp_->evaluate("wm geometry " + full_name() + " " + size);
+    interp_->invoke({"wm", "geometry", full_name_, size});
     return *this;
 }
 
 std::string Toplevel::geometry() const
 {
-    return interp_->evaluate("wm geometry " + full_name());
+    return interp_->invoke({"wm", "geometry", full_name_});
 }
 
 Toplevel& Toplevel::protocol(const std::string& name, std::function<void()> handler) 
 {
     std::string callback_name = "protocol_cb_" + sanitize(full_name()) + "_" + sanitize(name);
     interp_->register_void_callback(callback_name, handler);
-    interp_->evaluate("wm protocol " + full_name() + " " + name + " " + callback_name);
+    interp_->invoke({"wm", "protocol", full_name_, name, callback_name});
     return *this;
 }
 
 Toplevel& Toplevel::resizable(bool width, bool height)
 {
-    interp_->evaluate("wm resizable " + full_name() + " " +
-        std::to_string(width ? 1 : 0) + " " +
-        std::to_string(height ? 1 : 0));
+    interp_->invoke({"wm", "resizable", full_name_, (int)(width ? 1 : 0), (int)(height ? 1 : 0)});
     return *this;
 }
 
 Toplevel& Toplevel::minsize(int width, int height)
 {
-    interp_->evaluate("wm minsize " + full_name() + " " +
-        std::to_string(width) + " " +
-        std::to_string(height));
+    interp_->invoke({"wm", "minsize", full_name_, width, height});
     return *this;
 }
 
 Toplevel& Toplevel::maxsize(int width, int height)
 {
-    interp_->evaluate("wm maxsize " + full_name() + " " +
-        std::to_string(width) + " " +
-        std::to_string(height));
+    interp_->invoke({"wm", "maxsize", full_name_, width, height});
     return *this;
 }
 
 Toplevel& Toplevel::attributes(const std::string& name, const std::string& value)
 {
-    interp_->evaluate("wm attributes " + full_name() + " " + name + " " + value);
+    interp_->invoke({"wm", "attributes", full_name_, name, value});
     return *this;
 }
 
 std::string Toplevel::attributes(const std::string& name) const
 {
-    return interp_->evaluate("wm attributes " + full_name() + " " + name);
+    return interp_->invoke({"wm", "attributes", full_name_, name});
 }
 
 Toplevel& Toplevel::iconify()
 {
-    interp_->evaluate("wm iconify " + full_name());
+    interp_->invoke({"wm", "iconify", full_name_});
     return *this;
 }
 
 Toplevel& Toplevel::deiconify()
 {
-    interp_->evaluate("wm deiconify " + full_name());
+    interp_->invoke({"wm", "deiconify", full_name_});
     return *this;
 }
 
 Toplevel& Toplevel::withdraw()
 {
-    interp_->evaluate("wm withdraw " + full_name());
+    interp_->invoke({"wm", "withdraw", full_name_});
     return *this;
 }
 
 Toplevel& Toplevel::state(const std::string& new_state)
 {
-    interp_->evaluate("wm state " + full_name() + " " + new_state);
+    interp_->invoke({"wm", "state", full_name_, new_state});
     return *this;
 }
 
 std::string Toplevel::state() const
 {
-    return interp_->evaluate("wm state " + full_name());
+    return interp_->invoke({"wm", "state", full_name_});
 }
 
 Toplevel& Toplevel::lift()
 {
-    interp_->evaluate("raise " + full_name());
+    interp_->invoke({"raise", full_name_});
     return *this;
 }
 
 Toplevel& Toplevel::lower()
 {
-    interp_->evaluate("lower " + full_name());
+    interp_->invoke({"lower", full_name_});
     return *this;
 }
 
 Toplevel& Toplevel::grab_set()
 {
-    interp_->evaluate("grab set " + full_name());
+    interp_->invoke({"grab", "set", full_name_});
     return *this;
 }
 
 Toplevel& Toplevel::grab_release()
 {
-    interp_->evaluate("grab release " + full_name());
+    interp_->invoke({"grab", "release", full_name_});
     return *this;
 }
 
 Toplevel& Toplevel::iconphoto(const std::string& image_name)
 {
-    interp_->evaluate("wm iconphoto " + full_name() + " -default " + image_name);
+    interp_->invoke({"wm", "iconphoto", full_name_, "-default", image_name});
     return *this;
 }
 
 Toplevel& Toplevel::iconbitmap(const std::string& bitmap_path)
 {
-    interp_->evaluate("wm iconbitmap " + full_name() + " \"" + bitmap_path + "\"");
+    interp_->invoke({"wm", "iconbitmap", full_name_, bitmap_path});
     return *this;
 }
 
@@ -1110,256 +1156,203 @@ Canvas::Canvas(Widget *widget, const std::map<std::string, ArgValue>& options)
 
 Canvas& Canvas::itemconfig(const std::string& id_or_tag, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " itemconfig " << id_or_tag;
+    std::vector<ArgValue> words = {full_name_, "itemconfigure", id_or_tag};
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 std::string Canvas::create_line(const std::vector<std::array<double, 2>>& points, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " " << "create"
-        << " " << "line";
-
-    for (const std::array<double, 2>& point : points)
+    std::vector<ArgValue> words = {full_name_, "create", "line"};
+    for (const auto& pt : points)
     {
-        oss << " " << point[0] << " " << point[1];
+        words.push_back(pt[0]);
+        words.push_back(pt[1]);
     }
-
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-
-    return interp_->evaluate(oss.str());
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_line(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " " << "create"
-        << " " << "line"
-        << " " << x1
-        << " " << y1
-        << " " << x2
-        << " " << y2;
+    std::vector<ArgValue> words = {full_name_, "create", "line", x1, y1, x2, y2};
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    return interp_->evaluate(oss.str());
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_oval(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " " << "create"
-        << " " << "oval"
-        << " " << x1
-        << " " << y1
-        << " " << x2
-        << " " << y2;
+    std::vector<ArgValue> words = {full_name_, "create", "oval", x1, y1, x2, y2};
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    return interp_->evaluate(oss.str());
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_rectangle(const int& x1, const int& y1, const int& x2, const int& y2, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " " << "create"
-        << " " << "rectangle"
-        << " " << x1
-        << " " << y1
-        << " " << x2
-        << " " << y2;
+    std::vector<ArgValue> words = {full_name_, "create", "rectangle", x1, y1, x2, y2};
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    return interp_->evaluate(oss.str());
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_text(const int& x, const int& y, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " " << "create"
-        << " " << "text"
-        << " " << x
-        << " " << y;
+    std::vector<ArgValue> words = {full_name_, "create", "text", x, y};
     for (const auto &kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    return interp_->evaluate(oss.str());
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_polygon(const std::vector<int>& coords, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " create polygon";
-
+    std::vector<ArgValue> words = {full_name_, "create", "polygon"};
     for (int c : coords)
-        oss << " " << c;
-
+        words.push_back(c);
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    return interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " create arc "
-        << x1 << " " << y1 << " " << x2 << " " << y2;
-
+    std::vector<ArgValue> words = {full_name_, "create", "arc", x1, y1, x2, y2};
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    return interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_image(int x, int y, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " create image "
-        << x << " " << y;
-
+    std::vector<ArgValue> words = {full_name_, "create", "image", x, y};
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    return interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return interp_->invoke(words);
 }
 
 std::string Canvas::create_window(int x, int y, Widget* widget, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " create window "
-        << x << " " << y
-        << " -window " << widget->full_name();
-
+    std::vector<ArgValue> words = {full_name_, "create", "window", x, y, "-window", widget->full_name()};
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    return interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return interp_->invoke(words);
 }
 
 std::vector<std::string> Canvas::find_overlapping(int x1, int y1, int x2, int y2) const
 {
-    auto result = interp_->evaluate(
-        full_name() + " find overlapping " +
-        std::to_string(x1) + " " +
-        std::to_string(y1) + " " +
-        std::to_string(x2) + " " +
-        std::to_string(y2)
-    );
-
+    auto result = interp_->invoke({full_name_, "find", "overlapping", x1, y1, x2, y2});
     std::vector<std::string> ids;
     std::istringstream iss(result);
     std::string id;
     while (iss >> id)
         ids.push_back(id);
-
     return ids;
 }
 
 std::vector<std::string> Canvas::find_closest(int x, int y) const
 {
-    auto result = interp_->evaluate(
-        full_name() + " find closest " +
-        std::to_string(x) + " " +
-        std::to_string(y)
-    );
-
+    auto result = interp_->invoke({full_name_, "find", "closest", x, y});
     std::vector<std::string> ids;
     std::istringstream iss(result);
     std::string id;
     while (iss >> id)
         ids.push_back(id);
-
     return ids;
 }
 
 Canvas& Canvas::addtag(const std::string& tag, const std::string& where, const std::string& target)
 {
-    interp_->evaluate(full_name() + " addtag " + tag + " " + where + " " + target);
+    interp_->invoke({full_name_, "addtag", tag, where, target});
     return *this;
 }
 
 Canvas& Canvas::dtag(const std::string& tag, const std::string& target)
 {
-    interp_->evaluate(full_name() + " dtag " + target + " " + tag);
+    interp_->invoke({full_name_, "dtag", target, tag});
     return *this;
 }
 
 std::vector<std::string> Canvas::gettags(const std::string& id) const
 {
-    auto result = interp_->evaluate(full_name() + " gettags " + id);
-
+    auto result = interp_->invoke({full_name_, "gettags", id});
     std::vector<std::string> tags;
     std::istringstream iss(result);
     std::string tag;
     while (iss >> tag)
         tags.push_back(tag);
-
     return tags;
 }
 
 Canvas& Canvas::coords(const std::string& item_id, const std::vector<int>& coords)
 {
-    std::ostringstream oss;
-    oss << full_name() << " coords " << item_id;
-    for (const auto& c : coords)
-    {
-        oss << " " << c;
-    }
-    interp_->evaluate(oss.str());
+    std::vector<ArgValue> words = {full_name_, "coords", item_id};
+    for (int c : coords)
+        words.push_back(c);
+    interp_->invoke(words);
     return *this;
 }
 
 Canvas& Canvas::move(const std::string& id_or_tag, const int& x, const int& y)
 {
-    interp_->evaluate(full_name() + " move " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y));
+    interp_->invoke({full_name_, "move", id_or_tag, x, y});
     return *this;
 }
 
 Canvas& Canvas::moveto(const std::string& id_or_tag, const int& x, const int& y)
 {
-    interp_->evaluate(full_name() + " moveto " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y));
+    interp_->invoke({full_name_, "moveto", id_or_tag, x, y});
     return *this;
 }
 
 Canvas& Canvas::scale(const std::string& id_or_tag, const int& x, const int& y, const double& xscale, const double& yscale)
 {
-    interp_->evaluate(full_name() + " scale " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(xscale) + " " + std::to_string(yscale));
+    interp_->invoke({full_name_, "scale", id_or_tag, x, y, xscale, yscale});
     return *this;
 }
 
 Canvas& Canvas::rotate(const std::string& id_or_tag, const int& x, const int& y, const double& angle)
 {
-    interp_->evaluate(full_name() + " rotate " + id_or_tag + " " + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(angle));
+    interp_->invoke({full_name_, "rotate", id_or_tag, x, y, angle});
     return *this;
 }
 
 Canvas& Canvas::erase(const std::string& id_or_tag)
 {
-    interp_->evaluate(full_name() + " delete " + id_or_tag);
+    interp_->invoke({full_name_, "delete", id_or_tag});
     return *this;
 }
 
@@ -1397,35 +1390,31 @@ Entry& Entry::state(const std::string& state)
 
 Entry& Entry::icursor(const std::string& index)
 {
-    interp_->evaluate(full_name() + " icursor " + index);
+    interp_->invoke({full_name_, "icursor", index});
     return *this;
 }
 
 Entry& Entry::insert(const std::string& index, const std::string& text) 
 {
-    interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
+    interp_->invoke({full_name_, "insert", index, text});
     return *this;
 }
 
 int Entry::index(const std::string& index) const 
 {
-    auto ok     = false;
-    auto ret    = interp_->evaluate(full_name() + " index " + index, &ok);
-    if (!ok) 
-    {
+    auto ok  = false;
+    auto ret = interp_->invoke({full_name_, "index", index}, &ok);
+    if (!ok)
         return -1;
-    }
     return std::stol(ret);
 }
 
 Entry& Entry::erase(const std::string& start, const std::string& end) 
 {
-    auto cmd = full_name() + " delete " + start;
-    if (!end.empty()) 
-    {
-        cmd += " " + end;
-    }
-    interp_->evaluate(cmd);
+    std::vector<ArgValue> words = {full_name_, "delete", start};
+    if (!end.empty())
+        words.push_back(end);
+    interp_->invoke(words);
     return *this;
 }
 
@@ -1436,7 +1425,6 @@ Entry& Entry::set(const std::string& value)
         text_var_->set_var(value);
         return *this;
     }
-
     erase("0", "end");
     insert("0", value);
     return *this;
@@ -1445,16 +1433,9 @@ Entry& Entry::set(const std::string& value)
 std::string Entry::get() const
 {
     if (text_var_)
-    {
         return text_var_->get_var();
-    }
-
-    auto ok     = false;
-    auto ret    = interp_->evaluate(full_name() + " get", &ok);
-    if (!ok) 
-    {
-        // @todo エラーハンドリング
-    }
+    auto ok  = false;
+    auto ret = interp_->invoke({full_name_, "get"}, &ok);
     return ret;
 }
 
@@ -1478,25 +1459,25 @@ Listbox::Listbox(Widget* parent, const std::map<std::string, ArgValue>& options)
 
 Listbox& Listbox::insert(int index, const std::string& item) 
 {
-    interp_->evaluate(full_name() + " insert " + std::to_string(index) + " {" + item + "}");
+    interp_->invoke({full_name_, "insert", index, item});
     return *this;
 }
 
 Listbox& Listbox::erase(int start, int end) 
 {
-    interp_->evaluate(full_name() + " delete " + std::to_string(start) + " " + std::to_string(end));
+    interp_->invoke({full_name_, "delete", start, end});
     return *this;
 }
 
 std::vector<int> Listbox::curselection() const 
 {
-    std::string result = interp_->evaluate(full_name() + " curselection");
-    return {}; //parse_indices(result); // "0 2 4" → {0, 2, 4}
+    std::string result = interp_->invoke({full_name_, "curselection"});
+    return {};
 }
 
 std::string Listbox::get(int index) const 
 {
-    return interp_->evaluate(full_name() + " get " + std::to_string(index));
+    return interp_->invoke({full_name_, "get", index});
 }
 
 Listbox& Listbox::yscrollcommand(const std::string& callback) 
@@ -1514,48 +1495,42 @@ Listbox& Listbox::selectmode(const std::string& mode)
 Menu::Menu(Widget* parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "menu", "menu")
 {
-    std::ostringstream oss;
-    oss << full_name();
-    for (const auto& kv : options)
-    {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-    }
-    interp_->evaluate(oss.str());
+    config(options);
 }
 
 Menu& Menu::add_command(const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " add command";
+    std::vector<ArgValue> words = {full_name_, "add", "command"};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Menu& Menu::add_cascade(const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " add cascade";
+    std::vector<ArgValue> words = {full_name_, "add", "cascade"};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Menu& Menu::add_separator()
 {
-    interp_->evaluate(full_name() + " add separator");
+    interp_->invoke({full_name_, "add", "separator"});
     return *this;
 }
 
 Menu& Menu::delete_item(const std::string& index)
 {
-    interp_->evaluate(full_name() + " delete " + index);
+    interp_->invoke({full_name_, "delete", index});
     return *this;
 }
 
@@ -1591,19 +1566,19 @@ PanedWindow& PanedWindow::orient(const std::string& dir)
 
 PanedWindow& PanedWindow::add(Widget* child, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " add " << child->full_name();
+    std::vector<ArgValue> words = {full_name_, "add", child->full_name()};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 PanedWindow& PanedWindow::forget(Widget* child)
 {
-    interp_->evaluate(full_name() + " forget " + child->full_name());
+    interp_->invoke({full_name_, "forget", child->full_name()});
     return *this;
 }
 
@@ -1627,7 +1602,7 @@ Radiobutton& Radiobutton::variable(Var* var)
 
 Radiobutton& Radiobutton::value(const std::string& val)
 {
-    config({{"value", "\"" + val + "\""}});
+    interp_->invoke({full_name_, "configure", "-value", val});
     return *this;
 }
 
@@ -1693,7 +1668,7 @@ Scrollbar& Scrollbar::command(std::function<void(const std::string&)> callback)
 
 Scrollbar& Scrollbar::set(const std::string& args) 
 {
-    interp_->evaluate(full_name() + " set " + args);
+    interp_->invoke({full_name_, "set", args});
     return *this;
 }
 
@@ -1705,19 +1680,19 @@ Spinbox::Spinbox(Widget* parent, const std::map<std::string, ArgValue>& options)
 
 Spinbox& Spinbox::from(double val)
 {
-    config({{"from", std::to_string(val)}});
+    config({{"from", val}});
     return *this;
 }
 
 Spinbox& Spinbox::to(double val)
 {
-    config({{"to", std::to_string(val)}});
+    config({{"to", val}});
     return *this;
 }
 
 Spinbox& Spinbox::increment(double val)
 {
-    config({{"increment", std::to_string(val)}});
+    config({{"increment", val}});
     return *this;
 }
 
@@ -1743,18 +1718,18 @@ Text::Text(Widget* parent, const std::map<std::string, ArgValue>& options)
 
 Text& Text::insert(const std::string& index, const std::string& text) 
 {
-    interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
+    interp_->invoke({full_name_, "insert", index, text});
     return *this;
 }
 
 std::string Text::get(const std::string& start, const std::string& end) const 
 {
-    return interp_->evaluate(full_name() + " get " + start + " " + end);
+    return interp_->invoke({full_name_, "get", start, end});
 }
 
 Text& Text::erase(const std::string& start, const std::string& end) 
 {
-    interp_->evaluate(full_name() + " delete " + start + " " + end);
+    interp_->invoke({full_name_, "delete", start, end});
     return *this;
 }
 
@@ -1768,7 +1743,7 @@ Text& Text::yscrollcommand(std::function<void(std::string)> callback)
 
 Text& Text::yview(const std::string& args) 
 {
-    interp_->evaluate(full_name() + " yview " + args);
+    interp_->invoke({full_name_, "yview", args});
     return *this;
 }
 
@@ -1780,61 +1755,53 @@ Text& Text::wrap(const std::string& mode)
 
 Text& Text::tag_add(const std::string& tag, const std::string& start, const std::string& end)
 {
-    interp_->evaluate(full_name() + " tag add " + tag + " " + start + " " + end);
+    interp_->invoke({full_name_, "tag", "add", tag, start, end});
     return *this;
 }
 
 Text& Text::tag_remove(const std::string& tag, const std::string& start, const std::string& end)
 {
-    interp_->evaluate(full_name() + " tag remove " + tag + " " + start + " " + end);
+    interp_->invoke({full_name_, "tag", "remove", tag, start, end});
     return *this;
 }
 
 Text& Text::tag_config(const std::string& tag, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " tag configure " << tag;
+    std::vector<ArgValue> words = {full_name_, "tag", "configure", tag};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Text& Text::mark_set(const std::string& mark, const std::string& index)
 {
-    interp_->evaluate(full_name() + " mark set " + mark + " " + index);
+    interp_->invoke({full_name_, "mark", "set", mark, index});
     return *this;
 }
 
 Text& Text::mark_unset(const std::string& mark)
 {
-    interp_->evaluate(full_name() + " mark unset " + mark);
+    interp_->invoke({full_name_, "mark", "unset", mark});
     return *this;
 }
 
 std::string Text::search(const std::string& pattern, const std::string& index, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " search";
-
+    std::vector<ArgValue> words = {full_name_, "search"};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-
-    oss << " {" << pattern << "} " << index;
-
+    words.push_back(pattern);
+    words.push_back(index);
     auto ok  = false;
-    auto ret = interp_->evaluate(oss.str(), &ok);
-
-    if (!ok)
-    {
-        return "";
-    }
-
-    return ret;
+    auto ret = interp_->invoke(words, &ok);
+    return ok ? ret : "";
 }
 
 namespace ttk
@@ -1844,7 +1811,7 @@ Font::Font(Widget* parent, const std::map<std::string, ArgValue>& option)
     : name_("font_" + id)
     , interp_(parent->interp())
 {
-    interp_->evaluate("font create " + name_);
+    interp_->invoke({"font", "create", name_});
     if (!option.empty())
     {
         config(option);
@@ -1853,50 +1820,44 @@ Font::Font(Widget* parent, const std::map<std::string, ArgValue>& option)
 
 Font& Font::config(const std::map<std::string, ArgValue>& option)
 {
-    std::ostringstream oss;
-    oss << "font configure " << name_;
+    std::vector<ArgValue> words = {"font", "configure", name_};
     for (const auto &kv : option)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
-    interp_->evaluate(oss.str());
+    interp_->invoke(words);
     return *this;
 }
 
 Font& Font::size(const int& size)
 {
-    config({{"size", std::to_string(size)}});
-    return *this;
+    return config({{"size", size}});
 }
 
 Font& Font::weight(const std::string& weight)
 {
-    config({{"weight", weight}});
-    return *this;
+    return config({{"weight", weight}});
 }
 
 Font& Font::family(const std::string& family)
 {
-    config({{"family",  "\"" + family + "\""}});
-    return *this;
+    return config({{"family", family}});
 }
 
 Font& Font::slant(const std::string& slant)
 {
-    config({{"slant", slant}});
-    return *this;
+    return config({{"slant", slant}});
 }
 
 Font& Font::underline(const int& underline)
 {
-    config({{"underline", std::to_string(underline)}});
-    return *this;
+    return config({{"underline", underline}});
 }
 
 Font& Font::overstrike(const int& overstrike)
 {
-    config({{"overstrike", std::to_string(overstrike)}});
-    return *this;
+    return config({{"overstrike", overstrike}});
 }
 
 const std::string& Font::name() const
@@ -1978,14 +1939,18 @@ Combobox::Combobox(Widget* parent, const std::map<std::string, ArgValue>& option
 
 Combobox& Combobox::values(const std::vector<std::string>& items) 
 {
-    std::ostringstream oss;
-    oss << full_name() << " configure -values {";
+    std::vector<ArgValue> words = {full_name_, "configure", "-values"};
+    // Tcl リスト形式で一括渡し: 各要素を個別 ArgValue として渡す
+    // Tcl_EvalObjv では -values {a b c} と等価な渡し方をする必要があるため
+    // リストオブジェクトを構築する
+    std::string list_str;
     for (const auto& item : items)
     {
-        oss << "\"" << escape_tcl_string(item) << "\" ";
+        if (!list_str.empty()) list_str += " ";
+        list_str += "{" + item + "}";
     }
-    oss << "}";
-    interp_->evaluate(oss.str());
+    words.push_back(list_str);
+    interp_->invoke(words);
     return *this;
 }
 
@@ -2041,30 +2006,30 @@ Combobox& Combobox::set(const std::string& value)
 
 Combobox& Combobox::insert(const std::string& index, const std::string& text) 
 {
-    interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
+    interp_->invoke({full_name_, "insert", index, text});
     return *this;
 }
 
 std::string Combobox::get() const 
 {
-    return interp_->evaluate(full_name() + " get " );
+    return interp_->invoke({full_name_, "get"});
 }
 
 Combobox& Combobox::erase(const std::string& start, const std::string& end) 
 {
-    interp_->evaluate(full_name() + " delete " + start + " " + end);
+    interp_->invoke({full_name_, "delete", start, end});
     return *this;
 }
 
 int Combobox::current() const
 {
-    const auto val = interp_->evaluate(full_name() + " current");
+    const auto val = interp_->invoke({full_name_, "current"});
     return safe_stol(val.c_str());
 }
 
 Combobox& Combobox::current(const int& idx)
 {
-    interp_->evaluate(full_name() + " current " + std::to_string(idx));
+    interp_->invoke({full_name_, "current", idx});
     return *this;    
 }
 
@@ -2090,35 +2055,31 @@ Entry& Entry::state(const std::string& state)
 
 Entry& Entry::icursor(const std::string& index)
 {
-    interp_->evaluate(full_name() + " icursor " + index);
+    interp_->invoke({full_name_, "icursor", index});
     return *this;
 }
 
 Entry& Entry::insert(const std::string& index, const std::string& text) 
 {
-    interp_->evaluate(full_name() + " insert " + index + " {" + text + "}");
+    interp_->invoke({full_name_, "insert", index, text});
     return *this;
 }
 
 int Entry::index(const std::string& index) const 
 {
-    auto ok     = false;
-    auto ret    = interp_->evaluate(full_name() + " index " + index, &ok);
-    if (!ok) 
-    {
+    auto ok  = false;
+    auto ret = interp_->invoke({full_name_, "index", index}, &ok);
+    if (!ok)
         return -1;
-    }
     return std::stol(ret);
 }
 
 Entry& Entry::erase(const std::string& start, const std::string& end) 
 {
-    auto cmd = full_name() + " delete " + start;
-    if (!end.empty()) 
-    {
-        cmd += " " + end;
-    }
-    interp_->evaluate(cmd);
+    std::vector<ArgValue> words = {full_name_, "delete", start};
+    if (!end.empty())
+        words.push_back(end);
+    interp_->invoke(words);
     return *this;
 }
 
@@ -2142,12 +2103,8 @@ std::string Entry::get() const
         return text_var_->get_var();
     }
 
-    auto ok     = false;
-    auto ret    = interp_->evaluate(full_name() + " get", &ok);
-    if (!ok) 
-    {
-        // @todo エラーハンドリング
-    }
+    auto ok  = false;
+    auto ret = interp_->invoke({full_name_, "get"}, &ok);
     return ret;
 }
 
@@ -2222,14 +2179,14 @@ Notebook& Notebook::add_tab(Widget* child, const std::string& label)
 {
     if (child)
     {
-        interp_->evaluate(full_name() + " add " + child->full_name() + " -text {" + escape_tcl_string(label) + "}");
+        interp_->invoke({full_name_, "add", child->full_name(), "-text", label});
     }
     return *this;
 }
 
 Notebook& Notebook::select(int index) 
 {
-    interp_->evaluate(full_name() + " select " + std::to_string(index));
+    interp_->invoke({full_name_, "select", index});
     return *this;
 }
 
@@ -2247,25 +2204,25 @@ Progressbar& Progressbar::mode(const std::string& mode)
 
 Progressbar& Progressbar::value(double v)
 {
-    config({{"value", std::to_string(v)}});
+    config({{"value", v}});
     return *this;
 }
 
 Progressbar& Progressbar::start(int interval)
 {
-    interp_->evaluate(full_name() + " start " + std::to_string(interval));
+    interp_->invoke({full_name_, "start", interval});
     return *this;
 }
 
 Progressbar& Progressbar::stop()
 {
-    interp_->evaluate(full_name() + " stop");
+    interp_->invoke({full_name_, "stop"});
     return *this;
 }
 
 Progressbar& Progressbar::step(double amount)
 {
-    interp_->evaluate(full_name() + " step " + std::to_string(amount));
+    interp_->invoke({full_name_, "step", amount});
     return *this;
 }
 
@@ -2289,7 +2246,7 @@ Radiobutton& Radiobutton::variable(Var* var)
 
 Radiobutton& Radiobutton::value(const std::string& val)
 {
-    config({{"value", "\"" + val + "\""}});
+    interp_->invoke({full_name_, "configure", "-value", val});
     return *this;
 }
 
@@ -2359,7 +2316,7 @@ Scrollbar& Scrollbar::command(std::function<void(const std::string&)> callback)
 
 Scrollbar& Scrollbar::set(const std::string& args) 
 {
-    interp_->evaluate(full_name() + " set " + args);
+    interp_->invoke({full_name_, "set", args});
     return *this;
 }
 
@@ -2371,19 +2328,19 @@ Spinbox::Spinbox(Widget* parent, const std::map<std::string, ArgValue>& options)
 
 Spinbox& Spinbox::from(double val)
 {
-    config({{"from", std::to_string(val)}});
+    config({{"from", val}});
     return *this;
 }
 
 Spinbox& Spinbox::to(double val)
 {
-    config({{"to", std::to_string(val)}});
+    config({{"to", val}});
     return *this;
 }
 
 Spinbox& Spinbox::increment(double val)
 {
-    config({{"increment", std::to_string(val)}});
+    config({{"increment", val}});
     return *this;
 }
 
@@ -2415,73 +2372,66 @@ Treeview::Treeview(Widget* parent, const std::map<std::string, ArgValue>& option
 
 Treeview& Treeview::insert(const std::string& parent, const std::string& index, const std::string& iid, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name()
-        << " insert "
-        << parent << " "
-        << index  << " "
-        << " -id " << iid;
-
+    std::vector<ArgValue> words = {full_name_, "insert", parent, index, "-id", iid};
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    interp_->invoke(words);
     return *this;
 }
 
 Treeview& Treeview::erase(const std::string& iid)
 {
-    interp_->evaluate(full_name() + " delete " + iid);
+    interp_->invoke({full_name_, "delete", iid});
     return *this;
 }
 
 Treeview& Treeview::item(const std::string& iid, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " item " << iid;
-
+    std::vector<ArgValue> words = {full_name_, "item", iid};
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    interp_->invoke(words);
     return *this;
 }
 
 Treeview& Treeview::heading(const std::string& column, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " heading " << column;
-
+    std::vector<ArgValue> words = {full_name_, "heading", column};
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    interp_->invoke(words);
     return *this;
 }
 
 Treeview& Treeview::column(const std::string& column, const std::map<std::string, ArgValue>& options)
 {
-    std::ostringstream oss;
-    oss << full_name() << " column " << column;
-
+    std::vector<ArgValue> words = {full_name_, "column", column};
     for (const auto& kv : options)
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
-
-    interp_->evaluate(oss.str());
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    interp_->invoke(words);
     return *this;
 }
 
 std::vector<std::string> Treeview::selection() const
 {
-    auto result = interp_->evaluate(full_name() + " selection");
-
+    auto result = interp_->invoke({full_name_, "selection"});
     std::vector<std::string> ids;
     std::istringstream iss(result);
     std::string id;
-
     while (iss >> id)
         ids.push_back(id);
-
     return ids;
 }
 
@@ -2492,26 +2442,20 @@ namespace colorchooser
 
 std::string askcolor(const std::map<std::string, ArgValue>& options)
 {
-    // Interpreter を取得
     auto* interp = cpp_tk::interp_map[std::this_thread::get_id()];
     if (!interp)
         return "";
 
-    std::ostringstream oss;
-    oss << "tk_chooseColor";
-
+    std::vector<ArgValue> words = {"tk_chooseColor"};
     for (const auto& kv : options)
     {
-        oss << " -" << kv.first << " " << kv.second.to_tcl();
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
     }
 
     bool ok = false;
-    auto ret = interp->evaluate(oss.str(), &ok);
-
-    if (!ok)
-        return "";
-
-    return ret;   // 例: "#ff0000" または ""（キャンセル時）
+    auto ret = interp->invoke(words, &ok);
+    return ok ? ret : "";
 }
 
 } // namespace colorchooser
@@ -2519,34 +2463,32 @@ std::string askcolor(const std::map<std::string, ArgValue>& options)
 namespace filedialog
 {
 
+static std::string invoke_dialog(const std::string& cmd_name, const std::map<std::string, ArgValue>& options)
+{
+    auto* interp = interp_map[std::this_thread::get_id()];
+    if (!interp) return "";
+    std::vector<ArgValue> words = {cmd_name};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return interp->invoke(words);
+}
+
 std::string askopenfile(const std::map<std::string, ArgValue>& options) 
 {
-    std::string cmd = "tk_getOpenFile";
-    for (const auto& kv : options) 
-    {
-        cmd += " -" + kv.first + " {" + kv.second.to_tcl() + "}";
-    }
-    return interp_map[std::this_thread::get_id()]->evaluate(cmd);
+    return invoke_dialog("tk_getOpenFile", options);
 }
 
 std::string asksaveasfilename(const std::map<std::string, ArgValue>& options) 
 {
-    std::string cmd = "tk_getSaveFile";
-    for (const auto& kv : options) 
-    {
-        cmd += " -" + kv.first + " {" + kv.second.to_tcl() + "}";
-    }
-    return interp_map[std::this_thread::get_id()]->evaluate(cmd);
+    return invoke_dialog("tk_getSaveFile", options);
 }
 
 std::string askdirectory(const std::map<std::string, ArgValue>& options) 
 {
-    std::string cmd = "tk_chooseDirectory";
-    for (const auto& kv : options) 
-    {
-        cmd += " -" + kv.first + " {" + kv.second.to_tcl() + "}";
-    }
-    return interp_map[std::this_thread::get_id()]->evaluate(cmd);
+    return invoke_dialog("tk_chooseDirectory", options);
 }
 
 } // filedialog
@@ -2554,24 +2496,31 @@ std::string askdirectory(const std::map<std::string, ArgValue>& options)
 namespace messagebox 
 {
 
+static std::string msgbox(const std::string& type, const std::string& icon, const std::string& title, const std::string& message)
+{
+    auto* interp = interp_map[std::this_thread::get_id()];
+    if (!interp) return "";
+    return interp->invoke({"tk_messageBox", "-type", type, "-icon", icon, "-title", title, "-message", message});
+}
+
 std::string showinfo(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon info -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
+    return msgbox("ok", "info", title, message);
 }
 
 std::string showwarning(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon warning -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
+    return msgbox("ok", "warning", title, message);
 }
 
 std::string showerror(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type ok -icon error -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
+    return msgbox("ok", "error", title, message);
 }
 
 std::string askquestion(const std::string& title, const std::string& message) 
 {
-    return interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type yesno -icon question -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
+    return msgbox("yesno", "question", title, message);
 }
 
 bool askyesno(const std::string& title, const std::string& message) 
@@ -2581,14 +2530,12 @@ bool askyesno(const std::string& title, const std::string& message)
 
 bool askokcancel(const std::string& title, const std::string& message) 
 {
-    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type okcancel -icon question -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
-    return result == "ok";
+    return msgbox("okcancel", "question", title, message) == "ok";
 }
 
 bool askretrycancel(const std::string& title, const std::string& message) 
 {
-    std::string result = interp_map[std::this_thread::get_id()]->evaluate("tk_messageBox -type retrycancel -icon warning -title {" + escape_tcl_string(title) + "} -message {" + escape_tcl_string(message) + "}");
-    return result == "retry";
+    return msgbox("retrycancel", "warning", title, message) == "retry";
 }
 
 } // messagebox
