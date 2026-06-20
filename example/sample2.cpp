@@ -124,8 +124,8 @@ int main()
             })
             .pack();
 
-        notebook.add_tab(&page1, "page1");
-        notebook.add_tab(&page2, "page2");
+        notebook.add_tab(page1, "page1");
+        notebook.add_tab(page2, "page2");
 
         tk.mainloop();
     }};

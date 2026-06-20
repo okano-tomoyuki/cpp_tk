@@ -1245,9 +1245,9 @@ std::string Canvas::create_image(int x, int y, const std::map<std::string, ArgVa
     return interp_->invoke(words);
 }
 
-std::string Canvas::create_window(int x, int y, Widget* widget, const std::map<std::string, ArgValue>& options)
+std::string Canvas::create_window(int x, int y, const Widget& widget, const std::map<std::string, ArgValue>& options)
 {
-    std::vector<ArgValue> words = {full_name_, "create", "window", x, y, "-window", widget->full_name()};
+    std::vector<ArgValue> words = {full_name_, "create", "window", x, y, "-window", widget.full_name()};
     for (const auto& kv : options)
     {
         words.push_back("-" + kv.first);
@@ -1552,9 +1552,9 @@ PanedWindow& PanedWindow::orient(const std::string& dir)
     return *this;
 }
 
-PanedWindow& PanedWindow::add(Widget* child, const std::map<std::string, ArgValue>& options)
+PanedWindow& PanedWindow::add(const Widget& child, const std::map<std::string, ArgValue>& options)
 {
-    std::vector<ArgValue> words = {full_name_, "add", child->full_name()};
+    std::vector<ArgValue> words = {full_name_, "add", child.full_name()};
     for (const auto& kv : options)
     {
         words.push_back("-" + kv.first);
@@ -1564,9 +1564,9 @@ PanedWindow& PanedWindow::add(Widget* child, const std::map<std::string, ArgValu
     return *this;
 }
 
-PanedWindow& PanedWindow::forget(Widget* child)
+PanedWindow& PanedWindow::forget(const Widget& child)
 {
-    interp_->invoke({full_name_, "forget", child->full_name()});
+    interp_->invoke({full_name_, "forget", child.full_name()});
     return *this;
 }
 
@@ -2175,12 +2175,9 @@ Notebook::Notebook(const Widget& parent, const std::map<std::string, ArgValue>& 
     config(options);
 }
 
-Notebook& Notebook::add_tab(Widget* child, const std::string& label) 
+Notebook& Notebook::add_tab(const Widget& child, const std::string& label) 
 {
-    if (child)
-    {
-        interp_->invoke({full_name_, "add", child->full_name(), "-text", label});
-    }
+    interp_->invoke({full_name_, "add", child.full_name(), "-text", label});
     return *this;
 }
 

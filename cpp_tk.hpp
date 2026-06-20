@@ -539,7 +539,7 @@ public:
     
     std::string create_image(int x, int y, const std::map<std::string, ArgValue>& options = {}); 
     
-    std::string create_window(int x, int y, Widget* widget, const std::map<std::string, ArgValue>& options = {}); 
+    std::string create_window(int x, int y, const Widget& widget, const std::map<std::string, ArgValue>& options = {}); 
     
     std::vector<std::string> find_overlapping(int x1, int y1, int x2, int y2) const; 
     
@@ -706,9 +706,9 @@ public:
     
     PanedWindow& orient(const std::string& dir); 
     
-    PanedWindow& add(Widget* child, const std::map<std::string, ArgValue>& options = {}); 
+    PanedWindow& add(const Widget& child, const std::map<std::string, ArgValue>& options = {}); 
     
-    PanedWindow& forget(Widget* child); 
+    PanedWindow& forget(const Widget& child); 
 
 };
 
@@ -996,7 +996,7 @@ public:
 
     explicit Notebook(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
-    Notebook& add_tab(Widget* child, const std::string& label);
+    Notebook& add_tab(const Widget& child, const std::string& label);
 
     Notebook& select(int index);
 };
