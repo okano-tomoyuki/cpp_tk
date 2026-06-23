@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  windows-msys2:
+    name: Windows (MSYS2 / MinGW64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-tcl
+            mingw-w64-x86_64-tk
+
+      - name: Configure
+        run: cmake -G "MinGW Makefiles" -S . -B build
+
+      - name: Build
+        run: cmake --build build --parallel
+
+  ubuntu:
+    name: Ubuntu 24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential tcl-dev tk-dev
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      - name: Build
+        run: cmake --build build --parallel
