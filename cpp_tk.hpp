@@ -4,6 +4,7 @@
 #include <string>
 #include <functional>
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 #include <array>
@@ -95,17 +96,18 @@ struct Event
 class Interpreter;
 class Widget;
 
-class ArgValue 
+class ArgValue
 {
 public:
-    enum class ValueType 
+    enum class ValueType
     {
         NONE,
         STRING,
         INT,
         DOUBLE,
         BOOL,
-        BYTES   // バイナリデータ (PhotoImage 等) 用
+        BYTES,      // バイナリデータ (PhotoImage 等) 用
+        STRING_LIST // Tclのリスト値(-filetypes等、要素ごとに個別quoteされたリストが必要な場合)用
     };
 
     ArgValue();
@@ -122,6 +124,8 @@ public:
 
     ArgValue(const std::vector<uint8_t>& bytes);
 
+    ArgValue(const std::vector<std::string>& list);
+
     ArgValue(const ArgValue& other);
 
     ArgValue& operator=(const ArgValue& other);
@@ -131,22 +135,24 @@ public:
     ValueType type() const;
 
     // 内部 Tcl_Obj 変換用アクセサ
-    int                            as_int()    const { return i_; }
-    double                         as_double() const { return d_; }
-    bool                           as_bool()   const { return b_; }
-    const std::string&             as_string() const { return *str_; }
-    const std::vector<uint8_t>&    as_bytes()  const { return *bytes_; }
+    int                            as_int()        const { return i_; }
+    double                         as_double()     const { return d_; }
+    bool                           as_bool()       const { return b_; }
+    const std::string&             as_string()     const { return *str_; }
+    const std::vector<uint8_t>&    as_bytes()      const { return *bytes_; }
+    const std::vector<std::string>& as_string_list() const { return *list_; }
 
 private:
     ValueType               type_;
-    union 
+    union
     {
         int     i_;
         double  d_;
         bool    b_;
     };
-    std::string*            str_;
-    std::vector<uint8_t>*   bytes_;
+    std::string*              str_;
+    std::vector<uint8_t>*     bytes_;
+    std::vector<std::string>* list_;
 
     void cleanup();
     void copy_from(const ArgValue& other);
@@ -156,7 +162,7 @@ class Object
 {
 
 public:
-    const std::string id;
+    std::string id;
 
     Object();
 
@@ -164,10 +170,9 @@ public:
 
     Object(Object&&) = default;
 
-    // id は構築時にのみ意味を持つため、代入では書き換えない
-    Object& operator=(const Object&) { return *this; }
+    Object& operator=(const Object& other) { id = other.id; return *this; }
 
-    Object& operator=(Object&&) noexcept { return *this; }
+    Object& operator=(Object&& other) noexcept { id = std::move(other.id); return *this; }
 
 private:
 
@@ -200,10 +205,19 @@ public:
     void set_var(const std::string& val);
 
 protected:
-    
+
     Interpreter* interp_;
 
     std::string  name_;
+
+    // interp_がnullptrの場合(デフォルト構築のまま未初期化/既に破棄された等)にセグメンテーション
+    // 違反を起こさないためのガード。派生クラスはinterp_->set_var/get_var/trace_varを直接呼ばず、
+    // これらのラッパー経由で呼び出す。
+    void trace_var(std::function<void(const std::string&)> callback);
+
+    void trace_var(std::function<void(const int&)> callback);
+
+    void trace_var(std::function<void(const double&)> callback);
 
 };
 
@@ -286,6 +300,8 @@ public:
 private:
     Interpreter* interp_;
     std::string  name_;
+
+    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
 };
 
 
@@ -298,11 +314,15 @@ public:
 
     Widget(const Widget& parent, const std::string &type, const std::string& name="");
 
-    Widget(const Widget&) = default;
+    // コピーすると「親と同じ型を1引数で渡す」呼び出しが子ウィジェット生成と衝突して
+    // 曖昧になり、意図せずコピーコンストラクタが選ばれてしまう事故を防ぐため禁止する
+    // (同じ実体を指す複製が欲しい場合はshared_impl()を使う)。
+    // 実体(Impl)はshared_ptrで共有されるため、ウィジェットの再配置はムーブで安全に行える。
+    Widget(const Widget&) = delete;
 
     Widget(Widget&&) = default;
 
-    Widget& operator=(const Widget&) = default;
+    Widget& operator=(const Widget&) = delete;
 
     Widget& operator=(Widget&&) = default;
 
@@ -342,6 +362,15 @@ public:
 
     void destroy();
 
+    /** 保留中のジオメトリ計算・イベント処理を即時反映させる(Python Misc.update()相当)。 */
+    void update();
+
+    /** 保留中の再描画・ジオメトリ計算のみを即時反映させる(Python Misc.update_idletasks()相当)。 */
+    void update_idletasks();
+
+    /** 合成イベントを発火する(Python Misc.event_generate()相当)。 */
+    void event_generate(const std::string& event, const std::map<std::string, ArgValue>& options = {});
+
     int winfo_width() const;
 
     int winfo_height() const;
@@ -362,21 +391,62 @@ public:
 
     std::vector<std::string> winfo_children() const;
 
-    Interpreter* interp() const;
+protected:
+
+    struct Impl
+    {
+        Interpreter* interp = nullptr;
+        std::string  full_name;
+        int          after_id = 0;
+    };
+
+public:
+
+    /**
+     * 実体(Tclウィジェット)を共有するためのハンドルを返す。Widgetはこの実体への
+     * shared_ptrハンドルであり、ここから`SomeType(handle)`のように再構築した複製は、
+     * 元のオブジェクトが後でmove/破棄されても常に有効であり続ける。
+     * 内部で自分自身や自分の子ウィジェットを参照するコールバック(Tk/Toplevelの
+     * WM_DELETE_WINDOWハンドラ、Memo/ScrollableFrameのscrollbar連携等)は、[this]や
+     * 生ポインタを直接キャプチャする代わりにこのハンドルをキャプチャし、発火時に
+     * `SomeType(handle)`のように再構築してから使うことで、move後のアドレス変化や
+     * 破棄後のダングリングポインタによるセグメンテーション違反を避けられる。
+     * (本家tkinterのウィジェットが実質的に参照カウント付きのオブジェクトであることに近い。)
+     */
+    std::shared_ptr<Impl> handle() const { return impl_; }
+
+    /** handle()から実体を共有する複製を作るためのコンストラクタ。 */
+    explicit Widget(std::shared_ptr<Impl> impl) : impl_(std::move(impl)) {}
 
 protected:
 
-    Interpreter *interp_;
+    std::shared_ptr<Impl> impl_ = std::make_shared<Impl>();
 
-    std::string full_name_;
+    // impl_->interpがnullptrの場合(デフォルト構築のまま未初期化/既に破棄された等)に
+    // セグメンテーション違反を起こさないためのガード。派生クラスはimpl_->interp->invoke/
+    // register_*_callbackを直接呼ばず、これらのラッパー経由で呼び出す。
+    // 名前をinvokeではなくcallにしているのは、本家Python tkinterが同じ役割を
+    // self.tk.call(...)と呼んでいることに合わせるため(invokeはButton等の実在する
+    // 「クリックを疑似的に発火させる」公開APIの名前として空けておく)。
+    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
 
-    int         after_id_;
+    void register_void_callback(const std::string& name, std::function<void()> callback) const;
+
+    void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback) const;
+
+    void register_double_callback(const std::string& name, std::function<void(const double&)> callback) const;
+
+    void register_event_callback(const std::string& name, std::function<void(const Event&)> callback) const;
+
+    void register_bool_callback(const std::string& name, std::function<bool(const std::string&)> callback) const;
 };
 
-class Tk : public Widget 
+class Tk : public Widget
 {
 
 public:
+
+    using Widget::Widget; // share<Tk>()用にWidget(shared_ptr<Impl>)を継承する
 
     explicit Tk();
 
@@ -448,6 +518,8 @@ class Toplevel : public Widget
 
 public:
 
+    using Widget::Widget; // share<Toplevel>()用にWidget(shared_ptr<Impl>)を継承する
+
     Toplevel() = default;
 
     explicit Toplevel(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -492,6 +564,9 @@ public:
 
     Toplevel& iconbitmap(const std::string& bitmap_path);
 
+    /** このウィンドウをmasterに対して一時的な(モーダルダイアログ等の)ウィンドウとして関連付ける。 */
+    Toplevel& transient(const Widget& master);
+
 };
 
 class Button : public Widget
@@ -510,6 +585,9 @@ public:
 
     Button& command(std::function<void()> callback);
 
+    /** commandを疑似的に発火させる(Python Button.invoke()相当)。 */
+    std::string invoke();
+
 };
 
 class Canvas : public Widget
@@ -517,11 +595,25 @@ class Canvas : public Widget
 
 public:
 
+    using Widget::Widget; // share<Canvas>()用にWidget(shared_ptr<Impl>)を継承する
+
     Canvas() = default;
 
     explicit Canvas(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
     Canvas& itemconfig(const std::string& id_or_tag, const std::map<std::string, ArgValue>& options);
+
+    /** itemconfigの読み取り版。 */
+    std::string itemcget(const std::string& id_or_tag, const std::string& option) const;
+
+    /** 指定タグ/IDの外接矩形(x1 y1 x2 y2)を取得する。該当アイテムが無ければ空を返す。 */
+    std::vector<int> bbox(const std::string& id_or_tag) const;
+
+    /** 図形タグ/ID単位のイベントバインド。 */
+    Canvas& tag_bind(const std::string& id_or_tag, const std::string& event, std::function<void(const Event&)> callback);
+
+    /** tag_bindで登録したバインドを解除する。 */
+    Canvas& tag_unbind(const std::string& id_or_tag, const std::string& event);
 
     std::string create_line(const std::vector<std::array<double, 2>>& points, const std::map<std::string, ArgValue>& options = {});
 
@@ -555,9 +647,15 @@ public:
 
     Canvas& moveto(const std::string& id_or_tag, const int& x, const int& y);
 
-    Canvas& scale(const std::string& id_or_tag, const int& x, const int& y, const double& xscale, const double& yscale);
+    Canvas& xview(const std::string& args);
 
-    Canvas& rotate(const std::string& id_or_tag, const int& x, const int& y, const double& angle);
+    Canvas& yview(const std::string& args);
+
+    Canvas& xscrollcommand(std::function<void(std::string)> callback);
+
+    Canvas& yscrollcommand(std::function<void(std::string)> callback);
+
+    Canvas& scale(const std::string& id_or_tag, const int& x, const int& y, const double& xscale, const double& yscale);
 
     Canvas& coords(const std::string& id_or_tag, const std::vector<int>& coords);
 
@@ -579,11 +677,13 @@ public:
     explicit Checkbutton(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
     Checkbutton& text(const std::string& text);
-    
-    Checkbutton& variable(Var* var); 
-    
-    Checkbutton& command(std::function<void()> callback); 
 
+    Checkbutton& variable(Var* var);
+
+    Checkbutton& command(std::function<void()> callback);
+
+    /** commandを疑似的に発火させる(Python Checkbutton.invoke()相当)。 */
+    std::string invoke();
 
 };
 
@@ -611,6 +711,13 @@ public:
     Entry& set(const std::string& value);
 
     std::string get() const;
+
+    /**
+     * 入力値のリアルタイム検証(Python Entry(validate=mode, validatecommand=(vcmd,"%P"))相当の簡略版)。
+     * 置換コードは"%P"(検証対象になる編集後の全文字列)のみ対応する(%d/%i/%s/%S/%v/%V/%W等は非対応)。
+     * modeは"none"/"focus"/"focusin"/"focusout"/"key"/"all"。callbackがfalseを返すと編集は拒否される。
+     */
+    Entry& validate(const std::string& mode, std::function<bool(const std::string&)> callback);
 
 private:
 
@@ -647,9 +754,30 @@ public:
 
     std::string get(int index) const;
 
-    Listbox& yscrollcommand(const std::string& callback);
+    Listbox& yscrollcommand(std::function<void(std::string)> callback);
 
     Listbox& selectmode(const std::string& mode);
+
+    /** 指定indexが見えるようスクロールする。 */
+    Listbox& see(int index);
+
+    /** y座標に最も近い行のindexを返す。 */
+    int nearest(int y) const;
+
+    /** 行数を返す。 */
+    int size() const;
+
+    /** 選択範囲を設定する(lastを省略するとfirst単体を選択)。 */
+    Listbox& select_set(int first, int last = -1);
+
+    /** 選択範囲を解除する(lastを省略するとfirst単体を解除)。 */
+    Listbox& select_clear(int first, int last = -1);
+
+    /** indexが選択されているかを返す。 */
+    bool select_includes(int index) const;
+
+    /** indexをアクティブ要素にする。 */
+    Listbox& activate(int index);
 
 };
 
@@ -665,11 +793,19 @@ public:
     
     Menu& add_cascade(const std::map<std::string, ArgValue>& options); 
     
-    Menu& add_separator(); Menu& delete_item(const std::string& index); 
+    Menu& add_separator();
 
-}; 
+    Menu& erase(const std::string& index);
 
-class Menubutton : public Widget 
+    /** 任意位置にコンテキストメニューとしてポップアップ表示する。 */
+    Menu& post(int x, int y);
+
+    /** postで表示したメニューを閉じる。 */
+    Menu& unpost();
+
+};
+
+class Menubutton : public Widget
 { 
     
 public: 
@@ -725,13 +861,16 @@ public:
     
     Radiobutton& variable(Var* var); 
     
-    Radiobutton& value(const std::string& val); 
-    
-    Radiobutton& command(std::function<void()> callback); 
+    Radiobutton& value(const std::string& val);
+
+    Radiobutton& command(std::function<void()> callback);
+
+    /** commandを疑似的に発火させる(Python Radiobutton.invoke()相当)。 */
+    std::string invoke();
 
 };
 
-class Scale : public Widget 
+class Scale : public Widget
 {
 
 public:
@@ -788,10 +927,12 @@ public:
 
 };
 
-class Text : public Widget 
+class Text : public Widget
 {
 
 public:
+
+    using Widget::Widget; // share<Text>()用にWidget(shared_ptr<Impl>)を継承する
 
     Text() = default;
 
@@ -821,9 +962,14 @@ public:
 
     std::string search(const std::string& pattern, const std::string& index, const std::map<std::string, ArgValue>& options = {});
 
+    /** 指定位置が見えるようスクロールする。 */
+    Text& see(const std::string& index);
+
 };
 
-namespace ttk
+// Python本家ではフォントはtkinter.ttkではなくtkinter.font(別モジュール)に属するため、
+// cpp_tkでもttkとは独立したnamespace fontを切る。
+namespace font
 {
 
 class Font : public Object
@@ -832,7 +978,13 @@ public:
 
     Font();
 
-    explicit Font(const Widget& parent, const std::map<std::string, ArgValue>& option = {});
+    /**
+     * name/existsはPython tkinter.font.Font(root=None, font=None, name=None, exists=False, **options)
+     * に対応する。nameを指定しなければ内部で一意な名前を生成する。existsがtrueの場合は
+     * "font create"を呼ばず、既存の名前付きフォント(TkDefaultFont等)をそのまま参照する。
+     */
+    explicit Font(const Widget& parent, const std::map<std::string, ArgValue>& option = {},
+                  const std::string& name = "", bool exists = false);
 
     Font& config(const std::map<std::string, ArgValue>& option);
 
@@ -848,6 +1000,15 @@ public:
 
     Font& overstrike(const int& overstrike);
 
+    /** Python tkinter.font.Font.actual(option)相当。"font actual <name> -<option>"を返す。 */
+    std::string actual(const std::string& option) const;
+
+    /** Python tkinter.font.Font.metrics(option)相当。ascent/descent/linespace/fixedのいずれかを返す。 */
+    std::string metrics(const std::string& option) const;
+
+    /** Python tkinter.font.Font.measure(text)相当。textの描画幅(px)を返す。 */
+    int measure(const std::string& text) const;
+
     const std::string& name() const;
 
 private:
@@ -855,6 +1016,64 @@ private:
     Interpreter*    interp_;
 
     std::string     name_;
+
+    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
+
+};
+
+/**
+ * 既存の名前付きフォント(TkDefaultFont等)を参照するFontを返す(Python tkinter.font.nametofont相当)。
+ * 本家はFont(name=name, exists=True, root=root)を呼ぶだけの薄いラッパーであり、本実装も同様に
+ * 公開コンストラクタを呼ぶだけで、Fontの非公開メンバへ特別にアクセスする必要はない。
+ * 本家のrootはNone許容(暗黙のデフォルトルート)だが、cpp_tkはそれを持たないため必須引数にする。
+ */
+Font nametofont(const Widget& parent, const std::string& name);
+
+} // font
+
+namespace ttk
+{
+
+/**
+ * Python tkinter.ttk.Styleに対応する(configure/map/theme_use/theme_names相当のみ)。
+ * Style自体は名前付きTclオブジェクトを生成せず、"ttk::style"/"ttk::setTheme"コマンドを
+ * そのまま呼ぶだけなので、Object(id自動採番)は継承しない。
+ */
+class Style
+{
+public:
+
+    Style() = default;
+
+    explicit Style(const Widget& parent);
+
+    /** 指定style(例: "TButton"、全体既定は"." )の既定オプションを設定する。 */
+    Style& configure(const std::string& style_name, const std::map<std::string, ArgValue>& options);
+
+    /**
+     * 状態依存のオプションを設定する。各オプションの値は"state1 value1 state2 value2 ..."を
+     * 表す文字列のリスト(例: {"active", "#3c3f41", "disabled", "#555555"})で渡す
+     * (Tclの"-option {state1 value1 ...}"構文にそのまま対応する)。
+     */
+    Style& map(const std::string& style_name, const std::map<std::string, std::vector<std::string>>& options);
+
+    /** configure/mapで設定した値を読み取る(state/defaultの指定には非対応の簡略版)。 */
+    std::string lookup(const std::string& style_name, const std::string& option) const;
+
+    /** 利用可能なテーマ名一覧を返す。 */
+    std::vector<std::string> theme_names() const;
+
+    /** テーマを切り替える("clam"/"alt"/"default"等、ネイティブでない純Tcl実装のテーマは配色を上書きしやすい)。 */
+    Style& theme_use(const std::string& theme_name);
+
+    /** 現在有効なテーマ名を返す。 */
+    std::string theme_use() const;
+
+private:
+
+    Interpreter* interp_ = nullptr;
+
+    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
 
 };
 
@@ -875,7 +1094,10 @@ public:
 
     Button& command(std::function<void()> callback);
 
-    Button& font(const Font& font);
+    Button& font(const font::Font& font);
+
+    /** commandを疑似的に発火させる(Python Button.invoke()相当)。 */
+    std::string invoke();
 
 };
 
@@ -892,12 +1114,14 @@ public:
     
     Checkbutton& variable(Var* var); 
     
-    Checkbutton& command(std::function<void()> callback); 
+    Checkbutton& command(std::function<void()> callback);
 
+    /** commandを疑似的に発火させる(Python Checkbutton.invoke()相当)。 */
+    std::string invoke();
 
 };
 
-class Combobox : public Widget 
+class Combobox : public Widget
 {
 
 public:
@@ -918,7 +1142,7 @@ public:
 
     Combobox& state(const std::string& state);
 
-    Combobox& font(const Font& font);
+    Combobox& font(const font::Font& font);
 
     Combobox& set(const std::string& value);
 
@@ -964,10 +1188,17 @@ public:
 
     std::string get() const;
 
-    Entry& font(const Font& font);
+    Entry& font(const font::Font& font);
+
+    /**
+     * 入力値のリアルタイム検証(Python Entry(validate=mode, validatecommand=(vcmd,"%P"))相当の簡略版)。
+     * 置換コードは"%P"(検証対象になる編集後の全文字列)のみ対応する(%d/%i/%s/%S/%v/%V/%W等は非対応)。
+     * modeは"none"/"focus"/"focusin"/"focusout"/"key"/"all"。callbackがfalseを返すと編集は拒否される。
+     */
+    Entry& validate(const std::string& mode, std::function<bool(const std::string&)> callback);
 
 private:
-    
+
     Var* text_var_;
 
 };
@@ -976,6 +1207,8 @@ class Frame : public Widget
 {
 
 public:
+
+    using Widget::Widget; // share<Frame>()用にWidget(shared_ptr<Impl>)を継承する
 
     Frame() = default;
 
@@ -1016,7 +1249,7 @@ public:
 
     Label& relief(const std::string& relief);
 
-    Label& font(const Font& font);
+    Label& font(const font::Font& font);
 };
 
 class Labelframe : public Widget
@@ -1061,9 +1294,12 @@ public:
     
     Radiobutton& variable(Var* var); 
     
-    Radiobutton& value(const std::string& val); 
-    
-    Radiobutton& command(std::function<void()> callback); 
+    Radiobutton& value(const std::string& val);
+
+    Radiobutton& command(std::function<void()> callback);
+
+    /** commandを疑似的に発火させる(Python Radiobutton.invoke()相当)。 */
+    std::string invoke();
 
 };
 
@@ -1098,6 +1334,8 @@ class Scrollbar : public Widget
 {
 
 public:
+
+    using Widget::Widget; // share<Scrollbar>()用にWidget(shared_ptr<Impl>)を継承する
 
     Scrollbar() = default;
 
@@ -1158,6 +1396,32 @@ public:
     Treeview& column(const std::string& column, const std::map<std::string, ArgValue>& options = {});
 
     std::vector<std::string> selection() const;
+
+    /** 選択範囲を置き換える。 */
+    Treeview& selection_set(const std::vector<std::string>& iids);
+
+    /** 選択範囲に追加する。 */
+    Treeview& selection_add(const std::vector<std::string>& iids);
+
+    /** 選択範囲から取り除く。 */
+    Treeview& selection_remove(const std::vector<std::string>& iids);
+
+    /** 選択状態を反転させる。 */
+    Treeview& selection_toggle(const std::vector<std::string>& iids);
+
+    /** 指定iidの行が存在するかを返す。 */
+    bool exists(const std::string& iid) const;
+
+    /** 指定行が見えるようスクロールする。 */
+    Treeview& see(const std::string& iid);
+
+    Treeview& xview(const std::string& args);
+
+    Treeview& yview(const std::string& args);
+
+    Treeview& xscrollcommand(std::function<void(std::string)> callback);
+
+    Treeview& yscrollcommand(std::function<void(std::string)> callback);
 
     Treeview& set(const std::string& iid, const std::string& column, const ArgValue& value);
 
