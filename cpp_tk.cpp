@@ -164,16 +164,36 @@ public:
 
     Interpreter()
         : interp_(nullptr)
+        , owner_thread_(std::this_thread::get_id())
+        , owner_tcl_thread_(Tcl_GetCurrentThread())
     {
         interp_ = Tcl_CreateInterp();
         Tcl_Init(interp_);
         Tk_Init(interp_);
     }
-    
+
     ~Interpreter()
     {
         Tcl_DeleteInterp(interp_);
         interp_ = nullptr;
+    }
+
+    // Tcl_Interpは生成したスレッド以外から触ってはいけない(スレッド間で共有するAPIではない)。
+    // 呼び出し側(InterpreterClient::checked_interp)がこのスレッドIDと現在のスレッドを比較し、
+    // クロススレッドアクセスを検知するために公開する。
+    std::thread::id owner_thread() const { return owner_thread_; }
+
+    // Tcl_ThreadQueueEventで対象スレッドのTclイベントループへjobを安全に注入する(post()相当の実処理)。
+    // このメソッド自体はどのスレッドから呼んでも安全(Tcl_ThreadQueueEvent/Tcl_ThreadAlertはスレッド
+    // セーフなAPIとしてTcl自身が提供している)。
+    void post(std::function<void()> job)
+    {
+        auto* evPtr = reinterpret_cast<PostedJobEvent*>(Tcl_Alloc(sizeof(PostedJobEvent)));
+        evPtr->header.proc     = &Interpreter::handle_posted_job;
+        evPtr->header.nextPtr  = nullptr;
+        evPtr->job             = new std::function<void()>(std::move(job));
+        Tcl_ThreadQueueEvent(owner_tcl_thread_, reinterpret_cast<Tcl_Event*>(evPtr), TCL_QUEUE_TAIL);
+        Tcl_ThreadAlert(owner_tcl_thread_);
     }
 
     std::string call(const std::vector<ArgValue>& words, bool* success = nullptr)
@@ -375,7 +395,31 @@ public:
     }
 
 private:
+    // post()がTcl_ThreadQueueEventへ登録するイベント型。Tcl_Eventはヘッダ(header)を先頭に置いた
+    // C互換構造体であることが要求されるため、std::function自体は埋め込まずヒープに確保して
+    // ポインタだけを持たせる(Tcl_Alloc/Tcl_Freeで管理される領域にC++オブジェクトを直接
+    // 構築/破棄する事態を避けるため)。
+    struct PostedJobEvent
+    {
+        Tcl_Event               header;
+        std::function<void()>*  job;
+    };
+
+    // Tcl_ThreadQueueEventで注入されたjobをTclのイベントループ上(=生成スレッド上)で実行する。
+    // ここもTclのCコールスタックから直接呼ばれる境界なので、invoke_guarded経由で例外を握りつぶす。
+    static int handle_posted_job(Tcl_Event* evPtr, int /*flags*/)
+    {
+        auto* pj = reinterpret_cast<PostedJobEvent*>(evPtr);
+        invoke_guarded([&]() { (*pj->job)(); });
+        delete pj->job;
+        return 1; // 1 = 処理済み。呼び出し元(Tcl本体)がこの戻り値を見てキューから取り除く。
+    }
+
     Tcl_Interp* interp_;
+
+    std::thread::id owner_thread_;
+
+    Tcl_ThreadId owner_tcl_thread_;
 
     std::unordered_map<std::string, std::function<void(const Event&)>>          event_callback_map_;
 
@@ -551,7 +595,20 @@ Interpreter* InterpreterClient::checked_interp(const char* operation, bool* succ
     if (p == nullptr)
     {
         report_or_throw(std::string(operation) + "() called on an uninitialized " + type_name() + " (interp == nullptr).", success);
+        return p;
     }
+
+    // Tcl_Interpは生成したスレッド以外から触ると内部状態を破壊しうる未定義動作になるため、
+    // successの有無やerror_policy()(STRICT/LENIENT)に関わらず常にErrorを送出する。
+    if (p->owner_thread() != std::this_thread::get_id())
+    {
+        std::string message = std::string(operation) + "() called on a " + type_name()
+            + " from a thread different than the one that owns its Tcl interpreter. "
+              "Tcl_Interp must only be accessed from the thread that created it.";
+        std::cerr << "cpp_tk Error: " << message << std::endl;
+        throw Error(message);
+    }
+
     return p;
 }
 
@@ -570,6 +627,20 @@ std::string InterpreterClient::call(const std::vector<ArgValue>& words, bool* su
     }
     if (success) *success = true;
     return result;
+}
+
+void InterpreterClient::post(std::function<void()> job) const
+{
+    // checked_interp()は意図的に通さない(スレッド一致チェックはpost()の用途と矛盾するため)。
+    // 未初期化オブジェクトへの呼び出しはこれまで通りerror_policy()に従う(この時点ではまだ
+    // Tcl_Interpに一切触れていないため、クロススレッドの危険はない)。
+    auto* p = interp();
+    if (p == nullptr)
+    {
+        report_or_throw(std::string("post() called on an uninitialized ") + type_name() + " (interp == nullptr).", nullptr);
+        return;
+    }
+    p->post(std::move(job));
 }
 
 Var::Var()

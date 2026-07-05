@@ -219,6 +219,14 @@ public:
      */
     std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
 
+    /**
+     * jobを、このオブジェクトが紐づくInterpreter(Tcl_Interp)の所有スレッド上で安全に実行させる。
+     * call()等と異なりpost()自体はどのスレッドから呼び出しても安全(Tcl_ThreadQueueEventで対象
+     * スレッドのTclイベントループへjobを注入する、Python root.after(0, callback)+queue.Queue相当)。
+     * post()の呼び出し自体はjobの完了を待たずに戻る(非同期)。
+     */
+    void post(std::function<void()> job) const;
+
 protected:
 
     virtual ~InterpreterClient() = default;
