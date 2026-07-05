@@ -29,9 +29,9 @@ int main()
 
         auto listbox    = tk::Listbox(frame);
         listbox
-            .insert(0, "Apple")
-            .insert(1, "Banana")
-            .insert(2, "Cherry")
+            .insert(tk::END, "Apple")
+            .insert(tk::END, "Banana")
+            .insert(tk::END, "Cherry")
             .pack();
 
         auto text       = tk::Text(frame);

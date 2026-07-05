@@ -1785,21 +1785,9 @@ Listbox::Listbox(const Widget& parent, const std::map<std::string, ArgValue>& op
     config(options);
 }
 
-Listbox& Listbox::insert(int index, const std::string& item)
-{
-    call({impl_->full_name, "insert", index, item});
-    return *this;
-}
-
 Listbox& Listbox::insert(const std::string& index, const std::string& item)
 {
     call({impl_->full_name, "insert", index, item});
-    return *this;
-}
-
-Listbox& Listbox::erase(int start, int end)
-{
-    call({impl_->full_name, "delete", start, end});
     return *this;
 }
 
@@ -1821,11 +1809,6 @@ std::vector<int> Listbox::curselection() const
     return indices;
 }
 
-std::string Listbox::get(int index) const
-{
-    return call({impl_->full_name, "get", index});
-}
-
 std::string Listbox::get(const std::string& index) const
 {
     return call({impl_->full_name, "get", index});
@@ -1842,12 +1825,6 @@ Listbox& Listbox::yscrollcommand(std::function<void(std::string)> callback)
 Listbox& Listbox::selectmode(const std::string& mode)
 {
     config({{"selectmode", mode}}); // "single", "browse", "multiple", "extended"
-    return *this;
-}
-
-Listbox& Listbox::see(int index)
-{
-    call({impl_->full_name, "see", index});
     return *this;
 }
 
@@ -1869,28 +1846,10 @@ int Listbox::size() const
     return safe_stol(ret.c_str());
 }
 
-Listbox& Listbox::select_set(int first, int last)
-{
-    std::vector<ArgValue> words = {impl_->full_name, "selection", "set", first};
-    if (last >= 0)
-        words.push_back(last);
-    call(words);
-    return *this;
-}
-
 Listbox& Listbox::select_set(const std::string& first, const std::string& last)
 {
     std::vector<ArgValue> words = {impl_->full_name, "selection", "set", first};
     if (!last.empty())
-        words.push_back(last);
-    call(words);
-    return *this;
-}
-
-Listbox& Listbox::select_clear(int first, int last)
-{
-    std::vector<ArgValue> words = {impl_->full_name, "selection", "clear", first};
-    if (last >= 0)
         words.push_back(last);
     call(words);
     return *this;
@@ -1905,22 +1864,10 @@ Listbox& Listbox::select_clear(const std::string& first, const std::string& last
     return *this;
 }
 
-bool Listbox::select_includes(int index) const
-{
-    auto ret = call({impl_->full_name, "selection", "includes", index});
-    return safe_stol(ret.c_str()) != 0;
-}
-
 bool Listbox::select_includes(const std::string& index) const
 {
     auto ret = call({impl_->full_name, "selection", "includes", index});
     return safe_stol(ret.c_str()) != 0;
-}
-
-Listbox& Listbox::activate(int index)
-{
-    call({impl_->full_name, "activate", index});
-    return *this;
 }
 
 Listbox& Listbox::activate(const std::string& index)
@@ -2875,9 +2822,9 @@ Notebook& Notebook::add_tab(const Widget& child, const std::string& label)
     return *this;
 }
 
-Notebook& Notebook::select(int index) 
+Notebook& Notebook::select(const std::string& tab_id)
 {
-    call({impl_->full_name, "select", index});
+    call({impl_->full_name, "select", tab_id});
     return *this;
 }
 

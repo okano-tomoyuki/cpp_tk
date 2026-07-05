@@ -856,21 +856,14 @@ public:
 
     explicit Listbox(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
-    Listbox& insert(int index, const std::string& item);
-
-    /** index引数にEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
+    /** indexはEND/ACTIVE等のシンボリック定数、または数値の文字列表現("0"等)で指定する。 */
     Listbox& insert(const std::string& index, const std::string& item);
 
-    Listbox& erase(int start, int end);
-
-    /** start/endにEND等のシンボリック定数を使うためのオーバーロード(endを省略するとstart単体を削除)。 */
+    /** endを省略するとstart単体を削除する。 */
     Listbox& erase(const std::string& start, const std::string& end = "");
 
     std::vector<int> curselection() const;
 
-    std::string get(int index) const;
-
-    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
     std::string get(const std::string& index) const;
 
     Listbox& yscrollcommand(std::function<void(std::string)> callback);
@@ -878,9 +871,6 @@ public:
     Listbox& selectmode(const std::string& mode);
 
     /** 指定indexが見えるようスクロールする。 */
-    Listbox& see(int index);
-
-    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
     Listbox& see(const std::string& index);
 
     /** y座標に最も近い行のindexを返す。 */
@@ -890,27 +880,15 @@ public:
     int size() const;
 
     /** 選択範囲を設定する(lastを省略するとfirst単体を選択)。 */
-    Listbox& select_set(int first, int last = -1);
-
-    /** first/lastにEND等のシンボリック定数を使うためのオーバーロード(lastを省略するとfirst単体を選択)。 */
     Listbox& select_set(const std::string& first, const std::string& last = "");
 
     /** 選択範囲を解除する(lastを省略するとfirst単体を解除)。 */
-    Listbox& select_clear(int first, int last = -1);
-
-    /** first/lastにEND等のシンボリック定数を使うためのオーバーロード(lastを省略するとfirst単体を解除)。 */
     Listbox& select_clear(const std::string& first, const std::string& last = "");
 
     /** indexが選択されているかを返す。 */
-    bool select_includes(int index) const;
-
-    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
     bool select_includes(const std::string& index) const;
 
     /** indexをアクティブ要素にする。 */
-    Listbox& activate(int index);
-
-    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
     Listbox& activate(const std::string& index);
 
 };
@@ -1428,7 +1406,8 @@ public:
 
     Notebook& add_tab(const Widget& child, const std::string& label);
 
-    Notebook& select(int index);
+    /** tab_idは数値indexの文字列表現、タブ内容ウィジェットのフルネーム、または"current"を受け付ける(Python Notebook.select()相当)。 */
+    Notebook& select(const std::string& tab_id);
 };
 
 class Label : public Widget

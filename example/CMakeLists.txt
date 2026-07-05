@@ -1,4 +1,13 @@
-foreach(src_name sample1 sample2 calc eyes clock)
+foreach(src_name 
+    sample1 
+    sample2 
+    calc 
+    eyes 
+    clock 
+    scrolled_text
+    # photo_image
+    tree_view
+)
     add_executable(${src_name}
         ${src_name}.cpp
     )
