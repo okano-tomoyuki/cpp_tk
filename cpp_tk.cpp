@@ -102,6 +102,61 @@ Interpreter* current_interp()
     return it != interp_map.end() ? it->second : nullptr;
 }
 
+static ErrorPolicy g_error_policy = ErrorPolicy::STRICT;
+
+void set_error_policy(ErrorPolicy policy)
+{
+    g_error_policy = policy;
+}
+
+ErrorPolicy error_policy()
+{
+    return g_error_policy;
+}
+
+// checked_interp()/call()共通の失敗時挙動。ログ出力は常に行い、successが渡されていれば
+// (呼び出し元でok判定する前提なので)例外は投げない。successがnullptrならerror_policy()に従う。
+static void report_or_throw(const std::string& message, bool* success)
+{
+    std::cerr << "cpp_tk Error: " << message << std::endl;
+    if (success)
+    {
+        *success = false;
+        return;
+    }
+    if (error_policy() == ErrorPolicy::STRICT)
+        throw Error(message);
+}
+
+static std::function<void(const std::exception&)> g_callback_exception_handler =
+    [](const std::exception& e) {
+        std::cerr << "cpp_tk Error: uncaught exception in callback: " << e.what() << std::endl;
+    };
+
+void set_callback_exception_handler(std::function<void(const std::exception&)> handler)
+{
+    g_callback_exception_handler = std::move(handler);
+}
+
+// register_*_callback/trace_varのトランポリン(TclのCコールスタックから直接呼ばれる)専用。
+// コールバック本体は必ずこれ経由で呼び出し、C++例外がTcl側のCフレームへ伝播しないようにする。
+// ハンドラ自体が例外を投げても、ここで握りつぶしてTcl側には一切伝播させない。
+static void invoke_guarded(const std::function<void()>& body)
+{
+    try
+    {
+        body();
+    }
+    catch (const std::exception& e)
+    {
+        try { g_callback_exception_handler(e); } catch (...) {}
+    }
+    catch (...)
+    {
+        try { g_callback_exception_handler(std::runtime_error("unknown exception in cpp_tk callback")); } catch (...) {}
+    }
+}
+
 class Interpreter
 {
 
@@ -187,7 +242,8 @@ public:
             auto it = self->string_callback_map_.find(name1);
             if (it != self->string_callback_map_.end()) {
                 const char* val = Tcl_GetVar(interp, name1, TCL_GLOBAL_ONLY);
-                it->second(val ? val : "");
+                std::string v = val ? val : "";
+                invoke_guarded([&]() { it->second(v); });
             }
             return nullptr;
         }, this);
@@ -201,7 +257,8 @@ public:
             auto it = self->int_callback_map_.find(name1);
             if (it != self->int_callback_map_.end()) {
                 const char* val = Tcl_GetVar(interp, name1, TCL_GLOBAL_ONLY);
-                it->second(val ? std::stol(val) : 0);
+                int v = val ? std::stol(val) : 0;
+                invoke_guarded([&]() { it->second(v); });
             }
             return nullptr;
         }, this);
@@ -215,7 +272,8 @@ public:
             auto it = self->double_callback_map_.find(name1);
             if (it != self->double_callback_map_.end()) {
                 const char* val = Tcl_GetVar(interp, name1, TCL_GLOBAL_ONLY);
-                it->second(val ? std::stod(val) : 0.0);
+                double v = val ? std::stod(val) : 0.0;
+                invoke_guarded([&]() { it->second(v); });
             }
             return nullptr;
         }, this);
@@ -227,35 +285,35 @@ public:
         Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
             auto* self = static_cast<Interpreter*>(client_data);
             auto it = self->void_callback_map_.find(argv[0]);
-            if (it != self->void_callback_map_.end()) 
+            if (it != self->void_callback_map_.end())
             {
-                it->second();
+                invoke_guarded([&]() { it->second(); });
             }
             return TCL_OK;
-        }, this, nullptr); 
+        }, this, nullptr);
     }
-    
+
     void register_double_callback(const std::string& name, std::function<void(const double&)> callback)
     {
         double_callback_map_[name] = callback;
         Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
             auto* self = static_cast<Interpreter*>(client_data);
             auto it = self->double_callback_map_.find(argv[0]);
-            if (it != self->double_callback_map_.end()) 
+            if (it != self->double_callback_map_.end())
             {
-                it->second(safe_stod(argv[1]));
+                invoke_guarded([&]() { it->second(safe_stod(argv[1])); });
             }
             return TCL_OK;
-        }, this, nullptr); 
+        }, this, nullptr);
     }
-    
+
     void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback)
     {
         string_callback_map_[name] = callback;
         Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp*, int argc, const char* argv[]) -> int {
             auto* self = static_cast<Interpreter*>(client_data);
             auto it = self->string_callback_map_.find(argv[0]);
-            if (it != self->string_callback_map_.end()) 
+            if (it != self->string_callback_map_.end())
             {
                 std::string args;
                 for (int i = 1; i < argc; ++i)
@@ -263,12 +321,12 @@ public:
                     if (i > 1) args += ' ';
                     args += argv[i];
                 }
-                it->second(args);
+                invoke_guarded([&]() { it->second(args); });
             }
             return TCL_OK;
-        }, this, nullptr); 
+        }, this, nullptr);
     }
-    
+
     void register_event_callback(const std::string& name, std::function<void(const Event&)> callback)
     {
         event_callback_map_[name] = callback;
@@ -288,7 +346,7 @@ public:
                 e.character = argv[8];
                 e.type      = argv[9];
                 e.delta     = safe_stol(argv[10]);
-                it->second(e);
+                invoke_guarded([&]() { it->second(e); });
             }
             return TCL_OK;
         }, this, nullptr);
@@ -296,6 +354,7 @@ public:
 
     // Entry::validate()等、Tcl側にbool(0/1)を返す必要があるコールバック(validatecommand等)用。
     // 他のregister_*_callbackと異なり、Tclコマンドの戻り値そのものをcallbackの結果にする。
+    // コールバックが例外を投げた場合はfalse(編集拒否)側にfail closedする。
     void register_bool_callback(const std::string& name, std::function<bool(const std::string&)> callback)
     {
         bool_callback_map_[name] = callback;
@@ -306,7 +365,9 @@ public:
             if (it != self->bool_callback_map_.end())
             {
                 std::string arg = (argc > 1) ? argv[1] : "";
-                result = it->second(arg);
+                bool ok = false;
+                invoke_guarded([&]() { ok = it->second(arg); });
+                result = ok;
             }
             Tcl_SetObjResult(interp, Tcl_NewBooleanObj(result ? 1 : 0));
             return TCL_OK;
@@ -484,26 +545,31 @@ std::string Object::next()
     return std::to_string(count++);
 }
 
-Interpreter* InterpreterClient::checked_interp(const char* operation) const
+Interpreter* InterpreterClient::checked_interp(const char* operation, bool* success) const
 {
     auto* p = interp();
     if (p == nullptr)
     {
-        std::cerr << "cpp_tk Error: " << operation << "() called on an uninitialized "
-                   << type_name() << " (interp == nullptr)." << std::endl;
+        report_or_throw(std::string(operation) + "() called on an uninitialized " + type_name() + " (interp == nullptr).", success);
     }
     return p;
 }
 
 std::string InterpreterClient::call(const std::vector<ArgValue>& words, bool* success) const
 {
-    auto* p = checked_interp("call");
+    auto* p = checked_interp("call", success);
     if (p == nullptr)
-    {
-        if (success) *success = false;
         return {};
+
+    bool ok = false;
+    auto result = p->call(words, &ok);
+    if (!ok)
+    {
+        report_or_throw("call() failed to execute Tcl command: " + result, success);
+        return result;
     }
-    return p->call(words, success);
+    if (success) *success = true;
+    return result;
 }
 
 Var::Var()

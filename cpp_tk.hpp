@@ -9,6 +9,7 @@
 #include <vector>
 #include <array>
 #include <cstdint>
+#include <stdexcept>
 
 namespace cpp_tk
 {
@@ -167,6 +168,38 @@ private:
     void copy_from(const ArgValue& other);
 };
 
+/** cpp_tkが送出する唯一の例外型。Tcl呼び出し失敗・未初期化オブジェクトへのアクセス等、理由はwhat()で判別する。 */
+class Error : public std::runtime_error
+{
+public:
+    using std::runtime_error::runtime_error;
+};
+
+/**
+ * InterpreterClient::call()/checked_interp()が、呼び出し側にbool* successを渡されなかった場合の挙動。
+ * どちらのポリシーでもstderrへのログ出力自体は必ず行われる(診断性は維持する)。
+ */
+enum class ErrorPolicy
+{
+    STRICT,  // 既定。Errorを送出する(開発時向け)。
+    LENIENT, // 例外を投げず、ログのみで空文字列/false/no-opとして継続する(Release向け)。
+};
+
+/** 現在のErrorPolicyを設定する(既定はSTRICT)。 */
+void set_error_policy(ErrorPolicy policy);
+
+/** 現在のErrorPolicyを返す。 */
+ErrorPolicy error_policy();
+
+/**
+ * bind()/command()/trace()/validate()等、Tcl側から起動されるコールバックの中で捕捉された例外の
+ * 処理方法を差し替える(既定はstderrへの出力、Python Tk.report_callback_exception相当)。
+ * コールバックはTclのCコールスタックから直接呼ばれるため、C++例外をそのまま外へ伝播させると
+ * 未定義動作になる。そのためコールバック内の例外は必ずここで捕捉され、Tcl側には伝播しない
+ * (ハンドラ自身が例外を投げた場合もそこで握りつぶされ、Tcl側には伝播しない)。
+ */
+void set_callback_exception_handler(std::function<void(const std::exception&)> handler);
+
 /**
  * Interpreterと1:1で結び付くオブジェクト(Widget/PhotoImage/font::Font/ttk::Style/Var)の共通基底。
  * 派生クラスは「自分のInterpreterポインタがどこに格納されているか」をinterp()で教えるだけで、
@@ -200,8 +233,10 @@ protected:
      * interp()を呼び、nullptrなら「<operation>() called on an uninitialized <type_name()>」という
      * エラーメッセージを出力する。call()以外の操作(Var::get_var/set_var/trace_var等)でも
      * 同じガードを再利用するためのヘルパー。
+     * successが非nullptrならその呼び出し元でok判定する前提なので例外は投げない(*successにfalseを設定する)。
+     * successがnullptrならerror_policy()に従う(STRICTならError送出、LENIENTならログのみで継続する)。
      */
-    Interpreter* checked_interp(const char* operation) const;
+    Interpreter* checked_interp(const char* operation, bool* success = nullptr) const;
 
 };
 
