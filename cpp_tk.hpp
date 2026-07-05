@@ -177,15 +177,16 @@ public:
 
 /**
  * InterpreterClient::call()/checked_interp()が、呼び出し側にbool* successを渡されなかった場合の挙動を
- * カテゴリ別に指定するビットフラグ。STRICT(0)は「対応するビットが立っていない全カテゴリで
- * Errorを送出する」既定値。特定カテゴリのビットを立てると、そのカテゴリだけ「ログのみで
- * 空文字列/false/no-opとして継続する(例外を投げない)」に切り替わる。どのカテゴリ・ポリシーでも
- * stderrへのログ出力自体は必ず行われる(診断性は維持する)。複数カテゴリを組み合わせる場合は
- * operator|で連結する(例: LENIENT_CALL | LENIENT_THREAD)。
+ * カテゴリ別に指定するビットフラグ。DEFAULT(0)は「対応するビットが立っていない全カテゴリで
+ * Errorを送出する」既定値(あえてSTRICTという名前にしていないのは、Windows環境で<windows.h>を
+ * 先にincludeするとSTRICTマクロと衝突してコンパイルできなくなるため)。特定カテゴリのビットを
+ * 立てると、そのカテゴリだけ「ログのみで空文字列/false/no-opとして継続する(例外を投げない)」
+ * に切り替わる。どのカテゴリ・ポリシーでもstderrへのログ出力自体は必ず行われる(診断性は維持する)。
+ * 複数カテゴリを組み合わせる場合はoperator|で連結する(例: LENIENT_CALL | LENIENT_THREAD)。
  */
 enum class ErrorPolicy : unsigned
 {
-    STRICT         = 0,        // 既定。全カテゴリでErrorを送出する。
+    DEFAULT        = 0,        // 既定。全カテゴリでErrorを送出する。
     LENIENT_CALL   = 1u << 0,  // Tcl呼び出し失敗・未初期化オブジェクトへのアクセス
     LENIENT_THREAD = 1u << 1,  // Interpreterの所有スレッドと異なるスレッドからのアクセス
 };
@@ -206,7 +207,7 @@ constexpr bool has_error_policy(ErrorPolicy policy, ErrorPolicy category)
     return static_cast<unsigned>(policy & category) != 0;
 }
 
-/** 現在のErrorPolicyを設定する(既定はSTRICT)。 */
+/** 現在のErrorPolicyを設定する(既定はDEFAULT、全カテゴリでErrorを送出する)。 */
 void set_error_policy(ErrorPolicy policy);
 
 /** 現在のErrorPolicyを返す。 */
@@ -263,7 +264,8 @@ protected:
      * エラーメッセージを出力する。call()以外の操作(Var::get_var/set_var/trace_var等)でも
      * 同じガードを再利用するためのヘルパー。
      * successが非nullptrならその呼び出し元でok判定する前提なので例外は投げない(*successにfalseを設定する)。
-     * successがnullptrならerror_policy()に従う(STRICTならError送出、LENIENTならログのみで継続する)。
+     * successがnullptrならerror_policy()に従う(対応するカテゴリがDEFAULTならError送出、
+     * LENIENT_*ならログのみで継続する)。
      */
     Interpreter* checked_interp(const char* operation, bool* success = nullptr) const;
 

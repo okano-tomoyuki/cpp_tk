@@ -102,7 +102,7 @@ Interpreter* current_interp()
     return it != interp_map.end() ? it->second : nullptr;
 }
 
-static ErrorPolicy g_error_policy = ErrorPolicy::STRICT;
+static ErrorPolicy g_error_policy = ErrorPolicy::DEFAULT;
 
 void set_error_policy(ErrorPolicy policy)
 {
