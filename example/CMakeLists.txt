@@ -7,6 +7,7 @@ foreach(src_name
     scrolled_text
     # photo_image
     tree_view
+    multithread_text
 )
     add_executable(${src_name}
         ${src_name}.cpp

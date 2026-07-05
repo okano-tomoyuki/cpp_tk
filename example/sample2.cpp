@@ -23,7 +23,7 @@ int main()
 
         auto entry      = ttk::Entry(frame);
         entry
-            .set("Hello World")
+            .insert("0", "Hello World")
             .icursor("5")
             .pack();
 
