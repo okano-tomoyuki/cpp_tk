@@ -1,4 +1,7 @@
 #include "custom.hpp"
+#include "thirdparty/sv_ttk/sv_ttk_data.hpp"
+
+#include <cstdlib>
 
 // custom.cppはcpp_tk.hppの公開APIだけを使って実装できる(Tcl_Interp*等のTcl/Tk内部には
 // 一切触れない)。これはcore(cpp_tk.hpp/cpp_tk.cpp)が提供する薄いラッパーの上に、
@@ -205,6 +208,60 @@ double askfloat(const Widget& parent, const std::string& title, const std::strin
 }
 
 } // simpledialog
+
+void use_sv_ttk_theme(bool dark)
+{
+    ttk::Style style;
+
+    if (style.call({"info", "exists", "::cpp_tk_sv_ttk_loaded"}) != "1")
+    {
+        const char* tmp = std::getenv("TEMP");
+        if (!tmp) tmp = std::getenv("TMP");
+        if (!tmp) tmp = std::getenv("TMPDIR");
+        std::string base_dir = std::string(tmp ? tmp : "/tmp") + "/cpp_tk_sv_ttk";
+
+        // 埋め込みアセットを書き出す共通プロシージャを1度だけ定義する。このスクリプト文字列は
+        // cpp_tk自身が書いた固定文字列であり、埋め込みアセットの中身(content引数)は文字列展開
+        // せず単なる引数値として渡すため、特殊文字によるインジェクションの懸念はない。
+        style.call({"eval",
+            "proc cpp_tk_sv_ttk_write {path content is_binary} {"
+            "  file mkdir [file dirname $path];"
+            "  if {$is_binary} {"
+            "    set ch [open $path wb];"
+            "    fconfigure $ch -translation binary;"
+            "    puts -nonewline $ch [binary decode base64 $content];"
+            "  } else {"
+            "    set ch [open $path w];"
+            "    puts -nonewline $ch $content;"
+            "  };"
+            "  close $ch"
+            "}"
+        });
+
+        for (std::size_t i = 0; i < detail::sv_ttk_files_count; ++i)
+        {
+            const detail::EmbeddedFile& f = detail::sv_ttk_files[i];
+            std::string full_path = base_dir + "/" + f.relative_path;
+            std::string content(f.content, f.length);
+            style.call({"cpp_tk_sv_ttk_write", full_path, content, f.binary_base64 ? "1" : "0"});
+        }
+
+        style.call({"source", base_dir + "/sv.tcl"});
+        style.call({"set", "::cpp_tk_sv_ttk_loaded", "1"});
+    }
+
+    style.theme_use(dark ? "sun-valley-dark" : "sun-valley-light");
+
+    // ttk::style theme use(内部で呼ぶttk::setTheme)は<<ThemeChanged>>を自動発火しないため、
+    // sv.tclが登録したconfigure_colors等のバインド(配色の実適用)を確定させるには明示的に
+    // 発火させる必要がある(本家のPython sv_ttkパッケージも同様に明示発火している)。
+    // event generateによる発火は初回呼び出し直後だと反映されないことがあったため(要因未特定)、
+    // "."自身の配色を決めるconfigure_colorsは直接呼び出して確実に適用する。event generateは
+    // 既存のEntry/Combobox/Spinbox/Menu等(configure_colors以外の<<ThemeChanged>>バインド先)への
+    // 反映のためあわせて発火しておく。
+    style.call({"eval", "configure_colors"});
+    style.call({"event", "generate", ".", "<<ThemeChanged>>"});
+}
 
 } // custom
 } // cpp_tk

@@ -23,6 +23,7 @@ endif()
 add_library(${PROJECT_NAME}
     ${PROJECT_NAME}.cpp
     custom.cpp
+    thirdparty/sv_ttk/sv_ttk_data.cpp
 )
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")

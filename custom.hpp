@@ -97,6 +97,16 @@ double askfloat(const Widget& parent, const std::string& title, const std::strin
 
 } // simpledialog
 
+/**
+ * Sun Valley ttk theme(Windows 11風のモダンなttkテーマ、https://github.com/rdbende/Sun-Valley-ttk-theme
+ * by rdbende、MITライセンス)を適用する。thirdparty/sv_ttk/にベンダリングしたTclスクリプト・
+ * 画像アセット(LICENSE-sv_ttk.txtにライセンス原文を同梱)をビルド時にcpp_tk自身へ埋め込んでおり、
+ * 呼び出し時にOS一時ディレクトリへ同じ相対構造で展開してから`source`する(cpp_tkは単一の
+ * ライブラリをリンクするだけで完結する設計のため、別途アセットディレクトリを配布・指定する
+ * 必要はない)。darkにfalseを指定するとライトテーマになる。
+ */
+void use_sv_ttk_theme(bool dark = true);
+
 } // custom
 } // cpp_tk
 

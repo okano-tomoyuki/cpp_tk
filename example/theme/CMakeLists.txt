@@ -1,13 +1,5 @@
-foreach(src_name 
-    sample1 
-    sample2 
-    calc 
-    eyes 
-    clock 
-    scrolled_text
-    # photo_image
-    tree_view
-    multithread_text
+foreach(src_name
+    sv_ttk_demo
 )
     add_executable(${src_name}
         ${src_name}.cpp
@@ -23,5 +15,3 @@ foreach(src_name
             ${PROJECT_NAME}
     )
 endforeach()
-
-add_subdirectory(theme)
