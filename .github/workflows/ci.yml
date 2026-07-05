@@ -12,6 +12,7 @@ jobs:
     # このプロジェクトの開発環境(MSYS2 mingw64)に合わせている。
     # 動作確認はWindows/MSYS2でのみ実施済み(docs/tasks.md F節参照)。
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -36,12 +37,13 @@ jobs:
 
       - name: Test
         shell: msys2 {0}
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure --timeout 60
 
   linux:
     # 未検証(docs/tasks.md F節参照)。TkはXの仮想ディスプレイ(Xvfb)が無いと
     # ウィンドウ(withdraw()するものも含む)を生成できないため、xvfb-runで包む。
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +59,7 @@ jobs:
         run: cmake --build build
 
       - name: Test
-        run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure
+        run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure --timeout 60
 
   linux-sanitizers:
     # ユーザコールバックがhandle()規約を破った場合のダングリングポインタ参照(docs/tasks.md C節8.参照)を
@@ -65,6 +67,7 @@ jobs:
     # sanitizerランタイム(libasan/libubsan)を同梱していないため、標準GCCが最初からランタイムを
     # 持つLinux上でのみ実施する。
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -80,7 +83,7 @@ jobs:
         run: cmake --build build
 
       - name: Test
-        run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure
+        run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure --timeout 60
 
   # macos:
   #   # 未検証(docs/tasks.md F節参照)。macOS標準のTcl/Tkは古く問題が知られているため、
@@ -99,4 +102,4 @@ jobs:
   #       run: cmake --build build
 
   #     - name: Test
-  #       run: ctest --test-dir build --output-on-failure
+  #       run: ctest --test-dir build --output-on-failure --timeout 60
