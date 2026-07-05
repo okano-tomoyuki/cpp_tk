@@ -354,6 +354,9 @@ public:
 
     Widget& bind(const std::string& event, std::function<void(const Event&)> callback);
 
+    /** event に対して bind() で登録した処理を解除する(Python Misc.unbind()相当の簡略版)。 */
+    Widget& unbind(const std::string& event);
+
     std::string after(const int& ms, std::function<void()> callback);
 
     void after_idle(std::function<void()> callback);
@@ -390,6 +393,53 @@ public:
     std::string winfo_toplevel() const;
 
     std::vector<std::string> winfo_children() const;
+
+    int winfo_screenwidth() const;
+
+    int winfo_screenheight() const;
+
+    int winfo_pointerx() const;
+
+    int winfo_pointery() const;
+
+    /** このウィジェットを配置しているジオメトリマネージャ名("pack"/"grid"/"place"等)を返す。 */
+    std::string winfo_manager() const;
+
+    /** 画面上に実際にマッピングされているか(Python Misc.winfo_ismapped()相当)。 */
+    bool winfo_ismapped() const;
+
+    /** キーボードフォーカスをこのウィジェットに設定する(Python Misc.focus_set()相当)。 */
+    Widget& focus_set();
+
+    /** grabを無視してでも強制的にフォーカスを設定する(Python Misc.focus_force()相当)。 */
+    Widget& focus_force();
+
+    /** 現在フォーカスを持つウィジェットのフルネームを返す(未フォーカス時は空文字列、Python Misc.focus_get()相当)。 */
+    std::string focus_get() const;
+
+    /** クリップボードの内容を消去する(Python Misc.clipboard_clear()相当)。 */
+    void clipboard_clear();
+
+    /** クリップボードに文字列を追加する(Python Misc.clipboard_append()相当)。 */
+    void clipboard_append(const std::string& text);
+
+    /** クリップボードの内容を取得する(Python Misc.clipboard_get()相当)。 */
+    std::string clipboard_get() const;
+
+    /**
+     * このウィジェットが破棄されるまで呼び出しをブロックする(Python Misc.wait_window()相当)。
+     * mainloop()と同様にTclのイベントループへ再入するため、ブロック中も他のイベントは処理される。
+     */
+    void wait_window() const;
+
+    /** varの値が書き込まれるまで呼び出しをブロックする(Python Misc.wait_variable()相当)。 */
+    void wait_variable(const Var& var) const;
+
+    /** 兄弟ウィジェットの重なり順で最前面に上げる(Python Misc.lift()相当)。 */
+    Widget& lift();
+
+    /** 兄弟ウィジェットの重なり順で最背面に下げる(Python Misc.lower()相当)。 */
+    Widget& lower();
 
 protected:
 
@@ -737,7 +787,24 @@ public:
     Label& text(const std::string &text);
 };
 
-class Listbox : public Widget 
+/** classic(非ttk)版のLabelFrame(Python tkinter.LabelFrame相当)。ttk::Labelframeとは別に、本家同様classic側にも用意する。 */
+class LabelFrame : public Widget
+{
+
+public:
+
+    LabelFrame() = default;
+
+    explicit LabelFrame(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
+
+    LabelFrame& width(const int& width);
+
+    LabelFrame& height(const int& height);
+
+    LabelFrame& text(const std::string& text);
+};
+
+class Listbox : public Widget
 {
 
 public:
@@ -748,11 +815,20 @@ public:
 
     Listbox& insert(int index, const std::string& item);
 
+    /** index引数にEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
+    Listbox& insert(const std::string& index, const std::string& item);
+
     Listbox& erase(int start, int end);
+
+    /** start/endにEND等のシンボリック定数を使うためのオーバーロード(endを省略するとstart単体を削除)。 */
+    Listbox& erase(const std::string& start, const std::string& end = "");
 
     std::vector<int> curselection() const;
 
     std::string get(int index) const;
+
+    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
+    std::string get(const std::string& index) const;
 
     Listbox& yscrollcommand(std::function<void(std::string)> callback);
 
@@ -760,6 +836,9 @@ public:
 
     /** 指定indexが見えるようスクロールする。 */
     Listbox& see(int index);
+
+    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
+    Listbox& see(const std::string& index);
 
     /** y座標に最も近い行のindexを返す。 */
     int nearest(int y) const;
@@ -770,14 +849,26 @@ public:
     /** 選択範囲を設定する(lastを省略するとfirst単体を選択)。 */
     Listbox& select_set(int first, int last = -1);
 
+    /** first/lastにEND等のシンボリック定数を使うためのオーバーロード(lastを省略するとfirst単体を選択)。 */
+    Listbox& select_set(const std::string& first, const std::string& last = "");
+
     /** 選択範囲を解除する(lastを省略するとfirst単体を解除)。 */
     Listbox& select_clear(int first, int last = -1);
+
+    /** first/lastにEND等のシンボリック定数を使うためのオーバーロード(lastを省略するとfirst単体を解除)。 */
+    Listbox& select_clear(const std::string& first, const std::string& last = "");
 
     /** indexが選択されているかを返す。 */
     bool select_includes(int index) const;
 
+    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
+    bool select_includes(const std::string& index) const;
+
     /** indexをアクティブ要素にする。 */
     Listbox& activate(int index);
+
+    /** indexにEND/ACTIVE等のシンボリック定数を使うためのオーバーロード。 */
+    Listbox& activate(const std::string& index);
 
 };
 
@@ -789,11 +880,24 @@ public:
 
     explicit Menu(const Widget& parent, const std::map<std::string, ArgValue>& options = {}); 
     
-    Menu& add_command(const std::map<std::string, ArgValue>& options); 
-    
-    Menu& add_cascade(const std::map<std::string, ArgValue>& options); 
-    
+    Menu& add_command(const std::map<std::string, ArgValue>& options);
+
+    Menu& add_cascade(const std::map<std::string, ArgValue>& options);
+
     Menu& add_separator();
+
+    Menu& add_checkbutton(const std::map<std::string, ArgValue>& options);
+
+    Menu& add_radiobutton(const std::map<std::string, ArgValue>& options);
+
+    /** item_typeは"command"/"cascade"/"checkbutton"/"radiobutton"/"separator"のいずれか(Tclの"menu insert"にそのまま対応)。 */
+    Menu& insert(const std::string& index, const std::string& item_type, const std::map<std::string, ArgValue>& options = {});
+
+    /** 指定indexの項目の設定を変更する(Python Menu.entryconfigure()相当)。 */
+    Menu& entryconfigure(const std::string& index, const std::map<std::string, ArgValue>& options);
+
+    /** patternに一致する項目の数値indexを返す。一致が無ければ-1(Python Menu.index()相当)。 */
+    int index(const std::string& pattern) const;
 
     Menu& erase(const std::string& index);
 
@@ -814,11 +918,37 @@ public:
 
     explicit Menubutton(const Widget& parent); 
     
-    Menubutton& menu(Menu* menu); 
+    Menubutton& menu(Menu* menu);
 
 };
 
-class Message : public Widget 
+/**
+ * Python tkinter.OptionMenu(master, variable, value, *values)相当。classic専用(ttkに本家同等のものは無い)。
+ * 本家同様、内部でMenubutton+Menuを組み立てて実現する。variableは呼び出し側が生存期間を管理する
+ * (Checkbutton::variable等の他のvariable系APIと同様の制約)。
+ */
+class OptionMenu : public Widget
+{
+
+public:
+
+    OptionMenu() = default;
+
+    /** valuesの先頭要素が初期値としてvariableに設定される。 */
+    explicit OptionMenu(const Widget& parent, StringVar& variable, const std::vector<std::string>& values);
+
+    /** 選択変更時に呼ばれるコールバック(選択された値を引数で受け取る、Python OptionMenu(command=...)相当)。 */
+    OptionMenu& command(std::function<void(const std::string&)> callback);
+
+private:
+
+    Menu menu_;
+
+    std::shared_ptr<std::function<void(const std::string&)>> command_;
+
+};
+
+class Message : public Widget
 { 
     
 public: 
@@ -964,6 +1094,21 @@ public:
 
     /** 指定位置が見えるようスクロールする。 */
     Text& see(const std::string& index);
+
+    /** index1とindex2の前後関係をopで判定する(opは"<"/"<="/"=="/">="/">"/"!="、Python Text.compare()相当)。 */
+    bool compare(const std::string& index1, const std::string& op, const std::string& index2) const;
+
+    /** index1からindex2までの区間をoption("chars"/"lines"/"indices"等)単位でカウントする(Python Text.count()相当の簡略版)。 */
+    int count(const std::string& index1, const std::string& index2, const std::string& option = "chars") const;
+
+    /** index1(〜index2)の範囲のタグ/テキスト/マーク等を書き出す(Python Text.dump()相当の簡略版、生のTcl戻り値をそのまま返す)。 */
+    std::string dump(const std::string& index1, const std::string& index2 = "") const;
+
+    /** indexの位置に画像を埋め込み、生成された画像アイテム名を返す(Python Text.image_create()相当)。 */
+    std::string image_create(const std::string& index, const std::map<std::string, ArgValue>& options = {});
+
+    /** indexの位置に他のウィジェットを埋め込む(Python Text.window_create()相当)。 */
+    Text& window_create(const std::string& index, const Widget& window, const std::map<std::string, ArgValue>& options = {});
 
 };
 
@@ -1464,7 +1609,15 @@ namespace colorchooser
 namespace filedialog
 {
 
+/**
+ * ファイル選択ダイアログを表示し、選択されたパスを返す(空文字列はキャンセル)。
+ * 名前はPython tkinter.filedialog.askopenfilename()に合わせているが、Python本家のaskopenfile()は
+ * パスではなくファイルオブジェクトを返す点で意味が異なることに注意。
+ */
 std::string askopenfile(const std::map<std::string, ArgValue>& options = {});
+
+/** 複数選択(-multiple 1)を指定してファイル選択ダイアログを表示し、選択されたパス一覧を返す(Python askopenfilenames()相当)。 */
+std::vector<std::string> askopenfilenames(const std::map<std::string, ArgValue>& options = {});
 
 std::string asksaveasfilename(const std::map<std::string, ArgValue>& options = {});
 
@@ -1488,6 +1641,9 @@ bool askyesno(const std::string& title, const std::string& message);
 bool askokcancel(const std::string& title, const std::string& message);
 
 bool askretrycancel(const std::string& title, const std::string& message);
+
+/** yes/no/cancelの3択ダイアログ(Python messagebox.askyesnocancel()相当)。キャンセル時はfalseを返す点はaskyesno()と同じ判定に倣う。 */
+bool askyesnocancel(const std::string& title, const std::string& message);
 
 } // messagebox
 

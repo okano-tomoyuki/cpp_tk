@@ -1,6 +1,5 @@
 #include <cstring>
 #include <string>
-#include <sstream>
 #include <functional>
 #include <map>
 #include <unordered_map>
@@ -150,7 +149,25 @@ public:
             *success = ok;
         return Tcl_GetStringResult(interp_);
     }
-    
+
+    // Tclのリスト形式の文字列(要素にスペースを含む場合は{}や""で囲まれる)を、
+    // 単純な空白split(既存のwinfo_children等が使っている方式)では壊れてしまうため、
+    // Tcl_SplitListで正しく要素分解する。
+    std::vector<std::string> split_list(const std::string& list) const
+    {
+        int argc = 0;
+        const char** argv = nullptr;
+        std::vector<std::string> result;
+        if (Tcl_SplitList(interp_, list.c_str(), &argc, &argv) == TCL_OK)
+        {
+            result.reserve(argc);
+            for (int i = 0; i < argc; ++i)
+                result.emplace_back(argv[i]);
+            Tcl_Free(reinterpret_cast<char*>(argv));
+        }
+        return result;
+    }
+
     void set_var(const std::string& name, const std::string& value)
     {
         Tcl_SetVar(interp_, name.c_str(), value.c_str(), TCL_GLOBAL_ONLY);
@@ -809,6 +826,12 @@ Widget& Widget::bind(const std::string& event, std::function<void(const Event&)>
     return *this;
 }
 
+Widget& Widget::unbind(const std::string& event)
+{
+    call({"bind", impl_->full_name, event, ""});
+    return *this;
+}
+
 std::string Widget::after(const int& ms, std::function<void()> callback)
 {
     auto cb_name = sanitize(full_name()) + "_after_cb_" + std::to_string(impl_->after_id++);
@@ -911,15 +934,100 @@ std::string Widget::winfo_toplevel() const
 std::vector<std::string> Widget::winfo_children() const
 {
     auto result = call({"winfo", "children", impl_->full_name});
+    return impl_->interp->split_list(result);
+}
 
-    std::vector<std::string> children;
-    std::istringstream iss(result);
-    std::string child;
+int Widget::winfo_screenwidth() const
+{
+    auto ret = call({"winfo", "screenwidth", impl_->full_name});
+    return safe_stol(ret.c_str());
+}
 
-    while (iss >> child)
-        children.push_back(child);
+int Widget::winfo_screenheight() const
+{
+    auto ret = call({"winfo", "screenheight", impl_->full_name});
+    return safe_stol(ret.c_str());
+}
 
-    return children;
+int Widget::winfo_pointerx() const
+{
+    auto ret = call({"winfo", "pointerx", impl_->full_name});
+    return safe_stol(ret.c_str());
+}
+
+int Widget::winfo_pointery() const
+{
+    auto ret = call({"winfo", "pointery", impl_->full_name});
+    return safe_stol(ret.c_str());
+}
+
+std::string Widget::winfo_manager() const
+{
+    return call({"winfo", "manager", impl_->full_name});
+}
+
+bool Widget::winfo_ismapped() const
+{
+    auto ret = call({"winfo", "ismapped", impl_->full_name});
+    return safe_stol(ret.c_str()) != 0;
+}
+
+Widget& Widget::focus_set()
+{
+    call({"focus", impl_->full_name});
+    return *this;
+}
+
+Widget& Widget::focus_force()
+{
+    call({"focus", "-force", impl_->full_name});
+    return *this;
+}
+
+std::string Widget::focus_get() const
+{
+    auto ok  = false;
+    auto ret = call({"focus"}, &ok);
+    return ok ? ret : "";
+}
+
+void Widget::clipboard_clear()
+{
+    call({"clipboard", "clear"});
+}
+
+void Widget::clipboard_append(const std::string& text)
+{
+    call({"clipboard", "append", text});
+}
+
+std::string Widget::clipboard_get() const
+{
+    auto ok  = false;
+    auto ret = call({"clipboard", "get"}, &ok);
+    return ok ? ret : "";
+}
+
+void Widget::wait_window() const
+{
+    call({"tkwait", "window", impl_->full_name});
+}
+
+void Widget::wait_variable(const Var& var) const
+{
+    call({"tkwait", "variable", var.name()});
+}
+
+Widget& Widget::lift()
+{
+    call({"raise", impl_->full_name});
+    return *this;
+}
+
+Widget& Widget::lower()
+{
+    call({"lower", impl_->full_name});
+    return *this;
 }
 
 PhotoImage::PhotoImage()
@@ -1357,9 +1465,7 @@ std::vector<int> Canvas::bbox(const std::string& id_or_tag) const
     if (!ok)
         return box;
 
-    std::istringstream iss(result);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(result))
         box.push_back(safe_stol(token.c_str()));
     return box;
 }
@@ -1488,23 +1594,13 @@ std::string Canvas::create_window(int x, int y, const Widget& widget, const std:
 std::vector<std::string> Canvas::find_overlapping(int x1, int y1, int x2, int y2) const
 {
     auto result = call({impl_->full_name, "find", "overlapping", x1, y1, x2, y2});
-    std::vector<std::string> ids;
-    std::istringstream iss(result);
-    std::string id;
-    while (iss >> id)
-        ids.push_back(id);
-    return ids;
+    return impl_->interp->split_list(result);
 }
 
 std::vector<std::string> Canvas::find_closest(int x, int y) const
 {
     auto result = call({impl_->full_name, "find", "closest", x, y});
-    std::vector<std::string> ids;
-    std::istringstream iss(result);
-    std::string id;
-    while (iss >> id)
-        ids.push_back(id);
-    return ids;
+    return impl_->interp->split_list(result);
 }
 
 Canvas& Canvas::addtag(const std::string& tag, const std::string& where, const std::string& target)
@@ -1522,12 +1618,7 @@ Canvas& Canvas::dtag(const std::string& tag, const std::string& target)
 std::vector<std::string> Canvas::gettags(const std::string& id) const
 {
     auto result = call({impl_->full_name, "gettags", id});
-    std::vector<std::string> tags;
-    std::istringstream iss(result);
-    std::string tag;
-    while (iss >> tag)
-        tags.push_back(tag);
-    return tags;
+    return impl_->interp->split_list(result);
 }
 
 Canvas& Canvas::coords(const std::string& item_id, const std::vector<int>& coords)
@@ -1554,9 +1645,7 @@ Canvas& Canvas::moveto(const std::string& id_or_tag, const int& x, const int& y)
 Canvas& Canvas::xview(const std::string& args)
 {
     std::vector<ArgValue> words = {impl_->full_name, "xview"};
-    std::istringstream iss(args);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(args))
         words.emplace_back(token);
     call(words);
     return *this;
@@ -1565,9 +1654,7 @@ Canvas& Canvas::xview(const std::string& args)
 Canvas& Canvas::yview(const std::string& args)
 {
     std::vector<ArgValue> words = {impl_->full_name, "yview"};
-    std::istringstream iss(args);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(args))
         words.emplace_back(token);
     call(words);
     return *this;
@@ -1708,21 +1795,60 @@ Label& Label::text(const std::string &text)
     return *this;
 }
 
-Listbox::Listbox(const Widget& parent, const std::map<std::string, ArgValue>& options)
-    : Widget(parent, "listbox", "listbox") 
+LabelFrame::LabelFrame(const Widget& parent, const std::map<std::string, ArgValue>& options)
+    : Widget(parent, "labelframe", "labelframe")
 {
     config(options);
 }
 
-Listbox& Listbox::insert(int index, const std::string& item) 
+LabelFrame& LabelFrame::width(const int& width)
+{
+    config({{"width", std::to_string(width)}});
+    return *this;
+}
+
+LabelFrame& LabelFrame::height(const int& height)
+{
+    config({{"height", std::to_string(height)}});
+    return *this;
+}
+
+LabelFrame& LabelFrame::text(const std::string& text)
+{
+    config({{"text", text}});
+    return *this;
+}
+
+Listbox::Listbox(const Widget& parent, const std::map<std::string, ArgValue>& options)
+    : Widget(parent, "listbox", "listbox")
+{
+    config(options);
+}
+
+Listbox& Listbox::insert(int index, const std::string& item)
 {
     call({impl_->full_name, "insert", index, item});
     return *this;
 }
 
-Listbox& Listbox::erase(int start, int end) 
+Listbox& Listbox::insert(const std::string& index, const std::string& item)
+{
+    call({impl_->full_name, "insert", index, item});
+    return *this;
+}
+
+Listbox& Listbox::erase(int start, int end)
 {
     call({impl_->full_name, "delete", start, end});
+    return *this;
+}
+
+Listbox& Listbox::erase(const std::string& start, const std::string& end)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "delete", start};
+    if (!end.empty())
+        words.push_back(end);
+    call(words);
     return *this;
 }
 
@@ -1730,14 +1856,17 @@ std::vector<int> Listbox::curselection() const
 {
     std::string result = call({impl_->full_name, "curselection"});
     std::vector<int> indices;
-    std::istringstream iss(result);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(result))
         indices.push_back(safe_stol(token.c_str()));
     return indices;
 }
 
 std::string Listbox::get(int index) const
+{
+    return call({impl_->full_name, "get", index});
+}
+
+std::string Listbox::get(const std::string& index) const
 {
     return call({impl_->full_name, "get", index});
 }
@@ -1757,6 +1886,12 @@ Listbox& Listbox::selectmode(const std::string& mode)
 }
 
 Listbox& Listbox::see(int index)
+{
+    call({impl_->full_name, "see", index});
+    return *this;
+}
+
+Listbox& Listbox::see(const std::string& index)
 {
     call({impl_->full_name, "see", index});
     return *this;
@@ -1783,10 +1918,28 @@ Listbox& Listbox::select_set(int first, int last)
     return *this;
 }
 
+Listbox& Listbox::select_set(const std::string& first, const std::string& last)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "selection", "set", first};
+    if (!last.empty())
+        words.push_back(last);
+    call(words);
+    return *this;
+}
+
 Listbox& Listbox::select_clear(int first, int last)
 {
     std::vector<ArgValue> words = {impl_->full_name, "selection", "clear", first};
     if (last >= 0)
+        words.push_back(last);
+    call(words);
+    return *this;
+}
+
+Listbox& Listbox::select_clear(const std::string& first, const std::string& last)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "selection", "clear", first};
+    if (!last.empty())
         words.push_back(last);
     call(words);
     return *this;
@@ -1798,7 +1951,19 @@ bool Listbox::select_includes(int index) const
     return safe_stol(ret.c_str()) != 0;
 }
 
+bool Listbox::select_includes(const std::string& index) const
+{
+    auto ret = call({impl_->full_name, "selection", "includes", index});
+    return safe_stol(ret.c_str()) != 0;
+}
+
 Listbox& Listbox::activate(int index)
+{
+    call({impl_->full_name, "activate", index});
+    return *this;
+}
+
+Listbox& Listbox::activate(const std::string& index)
 {
     call({impl_->full_name, "activate", index});
     return *this;
@@ -1840,6 +2005,62 @@ Menu& Menu::add_separator()
     return *this;
 }
 
+Menu& Menu::add_checkbutton(const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "add", "checkbutton"};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+Menu& Menu::add_radiobutton(const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "add", "radiobutton"};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+Menu& Menu::insert(const std::string& index, const std::string& item_type, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "insert", index, item_type};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+Menu& Menu::entryconfigure(const std::string& index, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "entryconfigure", index};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+int Menu::index(const std::string& pattern) const
+{
+    auto ret = call({impl_->full_name, "index", pattern});
+    if (ret == "none")
+        return -1;
+    return safe_stol(ret.c_str());
+}
+
 Menu& Menu::erase(const std::string& index)
 {
     call({impl_->full_name, "delete", index});
@@ -1865,6 +2086,34 @@ Menubutton::Menubutton(const Widget& parent)
 Menubutton& Menubutton::menu(Menu* menu)
 {
     config({{"menu", menu->full_name()}});
+    return *this;
+}
+
+OptionMenu::OptionMenu(const Widget& parent, StringVar& variable, const std::vector<std::string>& values)
+    : Widget(parent, "menubutton", "optmenu")
+    , command_(std::make_shared<std::function<void(const std::string&)>>())
+{
+    menu_ = Menu(*this, {});
+    for (std::size_t i = 0; i < values.size(); ++i)
+    {
+        std::string value = values[i];
+        auto cb_name = sanitize(full_name()) + "_optmenu_cb_" + std::to_string(i);
+        auto* var_ptr = &variable;
+        auto cmd = command_;
+        register_void_callback(cb_name, [var_ptr, value, cmd]() {
+            var_ptr->set(value);
+            if (*cmd) (*cmd)(value);
+        });
+        menu_.add_command({{"label", value}, {"command", cb_name}});
+    }
+    config({{"menu", menu_.full_name()}, {"textvariable", variable.name()}});
+    if (!values.empty())
+        variable.set(values.front());
+}
+
+OptionMenu& OptionMenu::command(std::function<void(const std::string&)> callback)
+{
+    *command_ = callback;
     return *this;
 }
 
@@ -1998,9 +2247,7 @@ Scrollbar& Scrollbar::command(std::function<void(const std::string&)> callback)
 Scrollbar& Scrollbar::set(const std::string& args) 
 {
     std::vector<ArgValue> words = {impl_->full_name, "set"};
-    std::istringstream iss(args);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(args))
         words.emplace_back(token);
     call(words);
     return *this;
@@ -2078,9 +2325,7 @@ Text& Text::yscrollcommand(std::function<void(std::string)> callback)
 Text& Text::yview(const std::string& args)
 {
     std::vector<ArgValue> words = {impl_->full_name, "yview"};
-    std::istringstream iss(args);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(args))
         words.emplace_back(token);
     call(words);
     return *this;
@@ -2146,6 +2391,49 @@ std::string Text::search(const std::string& pattern, const std::string& index, c
 Text& Text::see(const std::string& index)
 {
     call({impl_->full_name, "see", index});
+    return *this;
+}
+
+bool Text::compare(const std::string& index1, const std::string& op, const std::string& index2) const
+{
+    auto ret = call({impl_->full_name, "compare", index1, op, index2});
+    return safe_stol(ret.c_str()) != 0;
+}
+
+int Text::count(const std::string& index1, const std::string& index2, const std::string& option) const
+{
+    auto ret = call({impl_->full_name, "count", "-" + option, index1, index2});
+    return safe_stol(ret.c_str());
+}
+
+std::string Text::dump(const std::string& index1, const std::string& index2) const
+{
+    std::vector<ArgValue> words = {impl_->full_name, "dump", index1};
+    if (!index2.empty())
+        words.push_back(index2);
+    return call(words);
+}
+
+std::string Text::image_create(const std::string& index, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "image", "create", index};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return call(words);
+}
+
+Text& Text::window_create(const std::string& index, const Widget& window, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "window", "create", index, "-window", window.full_name()};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
     return *this;
 }
 
@@ -2290,14 +2578,7 @@ std::string Style::lookup(const std::string& style_name, const std::string& opti
 
 std::vector<std::string> Style::theme_names() const
 {
-    std::istringstream iss(call({"ttk::style", "theme", "names"}));
-    std::vector<std::string> names;
-    std::string token;
-    while (iss >> token)
-    {
-        names.push_back(token);
-    }
-    return names;
+    return interp_->split_list(call({"ttk::style", "theme", "names"}));
 }
 
 Style& Style::theme_use(const std::string& theme_name)
@@ -2794,9 +3075,7 @@ Scrollbar& Scrollbar::command(std::function<void(const std::string&)> callback)
 Scrollbar& Scrollbar::set(const std::string& args)
 {
     std::vector<ArgValue> words = {impl_->full_name, "set"};
-    std::istringstream iss(args);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(args))
         words.emplace_back(token);
     call(words);
     return *this;
@@ -2916,15 +3195,7 @@ Treeview& Treeview::column(const std::string& column, const std::map<std::string
 std::vector<std::string> Treeview::selection() const
 {
     auto ret = call({impl_->full_name, "selection"});
-
-    std::vector<std::string> out;
-    std::istringstream iss(ret);
-    std::string token;
-
-    while (iss >> token)
-        out.push_back(token);
-
-    return out;
+    return impl_->interp->split_list(ret);
 }
 
 Treeview& Treeview::selection_set(const std::vector<std::string>& iids)
@@ -2978,9 +3249,7 @@ Treeview& Treeview::see(const std::string& iid)
 Treeview& Treeview::xview(const std::string& args)
 {
     std::vector<ArgValue> words = {impl_->full_name, "xview"};
-    std::istringstream iss(args);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(args))
         words.emplace_back(token);
     call(words);
     return *this;
@@ -2989,9 +3258,7 @@ Treeview& Treeview::xview(const std::string& args)
 Treeview& Treeview::yview(const std::string& args)
 {
     std::vector<ArgValue> words = {impl_->full_name, "yview"};
-    std::istringstream iss(args);
-    std::string token;
-    while (iss >> token)
+    for (const auto& token : impl_->interp->split_list(args))
         words.emplace_back(token);
     call(words);
     return *this;
@@ -3045,14 +3312,7 @@ Treeview& Treeview::reattach(const std::string& iid, const std::string& parent, 
 std::vector<std::string> Treeview::get_children(const std::string& iid) const
 {
     auto ret = call({impl_->full_name, "children", iid});
-    std::vector<std::string> out;
-    std::istringstream iss(ret);
-    std::string token;
-
-    while (iss >> token)
-        out.push_back(token);
-
-    return out;
+    return impl_->interp->split_list(ret);
 }
 
 std::string Treeview::parent(const std::string& iid) const
@@ -3115,12 +3375,8 @@ std::vector<int> Treeview::bbox(const std::string& iid, const std::string& colum
 {
     auto ret = call({impl_->full_name, "bbox", iid, column});
     std::vector<int> out;
-    std::istringstream iss(ret);
-    int v;
-
-    while (iss >> v)
-        out.push_back(v);
-
+    for (const auto& token : impl_->interp->split_list(ret))
+        out.push_back(safe_stol(token.c_str()));
     return out;
 }
 
@@ -3165,12 +3421,28 @@ static std::string invoke_dialog(const std::string& cmd_name, const std::map<std
     return interp->call(words);
 }
 
-std::string askopenfile(const std::map<std::string, ArgValue>& options) 
+std::string askopenfile(const std::map<std::string, ArgValue>& options)
 {
     return invoke_dialog("tk_getOpenFile", options);
 }
 
-std::string asksaveasfilename(const std::map<std::string, ArgValue>& options) 
+std::vector<std::string> askopenfilenames(const std::map<std::string, ArgValue>& options)
+{
+    auto* interp = interp_map[std::this_thread::get_id()];
+    if (!interp) return {};
+
+    std::vector<ArgValue> words = {"tk_getOpenFile", "-multiple", 1};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    // 戻り値はTclのリスト形式(要素にスペースを含む場合は{}で囲まれる)のため、
+    // 単純な空白splitではなくTcl_SplitListで正しく要素分解する。
+    return interp->split_list(interp->call(words));
+}
+
+std::string asksaveasfilename(const std::map<std::string, ArgValue>& options)
 {
     return invoke_dialog("tk_getSaveFile", options);
 }
@@ -3222,9 +3494,14 @@ bool askokcancel(const std::string& title, const std::string& message)
     return msgbox("okcancel", "question", title, message) == "ok";
 }
 
-bool askretrycancel(const std::string& title, const std::string& message) 
+bool askretrycancel(const std::string& title, const std::string& message)
 {
     return msgbox("retrycancel", "warning", title, message) == "retry";
+}
+
+bool askyesnocancel(const std::string& title, const std::string& message)
+{
+    return msgbox("yesnocancel", "question", title, message) == "yes";
 }
 
 } // messagebox
