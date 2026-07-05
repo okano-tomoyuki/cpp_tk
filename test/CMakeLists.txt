@@ -17,6 +17,7 @@ foreach(test_name
     test_simpledialog_escape
     test_structural_fixes
     test_uninitialized_objects
+    test_keep_alive
 )
     add_executable(${test_name}
         ${test_name}.cpp

@@ -2684,7 +2684,7 @@ OptionMenu::OptionMenu(const Widget& parent, StringVar& variable, const std::vec
     : Widget(parent, "menubutton", "optmenu")
     , command_(std::make_shared<std::function<void(const std::string&)>>())
 {
-    menu_ = Menu(*this, {});
+    menu_ = Menu(*this);
     for (std::size_t i = 0; i < values.size(); ++i)
     {
         std::string value = values[i];

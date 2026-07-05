@@ -59,6 +59,29 @@ jobs:
       - name: Test
         run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure
 
+  linux-sanitizers:
+    # ユーザコールバックがhandle()規約を破った場合のダングリングポインタ参照(docs/tasks.md C節8.参照)を
+    # 検知するためのAddressSanitizer/UndefinedBehaviorSanitizerビルド。Windows/MSYS2のmingw-w64 GCCは
+    # sanitizerランタイム(libasan/libubsan)を同梱していないため、標準GCCが最初からランタイムを
+    # 持つLinux上でのみ実施する。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build tcl-dev tk-dev xvfb
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCPP_TK_ENABLE_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure
+
   # macos:
   #   # 未検証(docs/tasks.md F節参照)。macOS標準のTcl/Tkは古く問題が知られているため、
   #   # Homebrewのtcl-tk(keg-only)を使う。CMAKE_PREFIX_PATHで検出させる。

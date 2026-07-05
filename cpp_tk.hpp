@@ -10,6 +10,8 @@
 #include <array>
 #include <cstdint>
 #include <stdexcept>
+#include <tuple>
+#include <utility>
 
 namespace cpp_tk
 {
@@ -798,12 +800,75 @@ protected:
     void register_bool_callback(const std::string& name, std::function<bool(const std::string&)> callback) const;
 };
 
+namespace detail
+{
+
+template <std::size_t...>
+struct index_sequence {};
+
+template <std::size_t N, std::size_t... Is>
+struct make_index_sequence : make_index_sequence<N - 1, N - 1, Is...> {};
+
+template <std::size_t... Is>
+struct make_index_sequence<0, Is...>
+{
+    using type = index_sequence<Is...>;
+};
+
+} // namespace detail
+
+/**
+ * bind()/command()等のコールバックで複数のWidget(派生クラス)をまとめて安全に参照するための
+ * ヘルパー。[this]や生の参照/ポインタを直接キャプチャすると、対象が破棄された後にコールバックが
+ * 発火した際、解放済みメモリを参照する未定義動作になる(docs/tasks.md C節8.参照)。keep_alive()は
+ * 各Widgetのhandle()(shared_ptr<Impl>)をまとめて保持するコピー可能な呼び出し可能オブジェクトを
+ * 返し、コールバック内で`auto widgets = self();`のように呼び出すことで、その時点のTcl側の状態を
+ * 反映した生きたWidgetの複製をstd::tupleで受け取れる(std::get<N>()で個々の要素にアクセスする)。
+ * 本家Python tkinterには存在しないC++固有の安全対策のためのヘルパーだが、Widget数が多い場合に
+ * 1つずつhandle()を手書きするコストを避けられる。
+ *
+ * 使用例:
+ *   auto handles = keep_alive(scrollbar_, text_);
+ *   scrollbar_.command([handles](const std::string& args) {
+ *       auto widgets = handles();
+ *       std::get<1>(widgets).yview(args); // text_
+ *   });
+ */
+template <typename... Ts>
+class WidgetGroup
+{
+public:
+    explicit WidgetGroup(const Ts&... widgets)
+        : handles_(widgets.handle()...)
+    {}
+
+    std::tuple<Ts...> operator()() const
+    {
+        return unpack(typename detail::make_index_sequence<sizeof...(Ts)>::type{});
+    }
+
+private:
+    template <std::size_t... Is>
+    std::tuple<Ts...> unpack(detail::index_sequence<Is...>) const
+    {
+        return std::tuple<Ts...>(Ts(std::get<Is>(handles_))...);
+    }
+
+    std::tuple<decltype(std::declval<Ts>().handle())...> handles_;
+};
+
+template <typename... Ts>
+WidgetGroup<Ts...> keep_alive(const Ts&... widgets)
+{
+    return WidgetGroup<Ts...>(widgets...);
+}
+
 class Tk : public Widget
 {
 
 public:
 
-    using Widget::Widget; // share<Tk>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     explicit Tk();
 
@@ -870,6 +935,8 @@ class Frame : public Widget
 
 public:
 
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Frame() = default;
 
     explicit Frame(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -887,7 +954,7 @@ class Toplevel : public Widget
 
 public:
 
-    using Widget::Widget; // share<Toplevel>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Toplevel() = default;
 
@@ -954,6 +1021,9 @@ class Button : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Button() = default;
 
     explicit Button(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -976,7 +1046,7 @@ class Canvas : public Widget
 
 public:
 
-    using Widget::Widget; // share<Canvas>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Canvas() = default;
 
@@ -1079,6 +1149,8 @@ class Checkbutton : public Widget
 
 public:
 
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Checkbutton() = default;
 
     explicit Checkbutton(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1103,6 +1175,8 @@ class Entry : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Entry() = default;
 
@@ -1156,6 +1230,8 @@ class Label : public Widget
 
 public:
 
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Label() = default;
 
     explicit Label(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1168,6 +1244,8 @@ class LabelFrame : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     LabelFrame() = default;
 
@@ -1184,6 +1262,8 @@ class Listbox : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Listbox() = default;
 
@@ -1235,9 +1315,11 @@ public:
 
 };
 
-class Menu : public Widget 
-{ 
-public: 
+class Menu : public Widget
+{
+public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Menu() = default;
 
@@ -1286,13 +1368,15 @@ public:
 };
 
 class Menubutton : public Widget
-{ 
-    
-public: 
+{
+
+public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Menubutton() = default;
 
-    explicit Menubutton(const Widget& parent); 
+    explicit Menubutton(const Widget& parent);
     
     Menubutton& menu(Menu* menu);
 
@@ -1307,6 +1391,8 @@ class OptionMenu : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     OptionMenu() = default;
 
@@ -1325,9 +1411,11 @@ private:
 };
 
 class Message : public Widget
-{ 
-    
-public: 
+{
+
+public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Message() = default;
 
@@ -1337,14 +1425,16 @@ public:
 
 };
 
-class PanedWindow : public Widget 
-{ 
-    
-public: 
+class PanedWindow : public Widget
+{
+
+public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     PanedWindow() = default;
 
-    explicit PanedWindow(const Widget& parent); 
+    explicit PanedWindow(const Widget& parent);
     
     PanedWindow& orient(const std::string& dir); 
     
@@ -1354,10 +1444,12 @@ public:
 
 };
 
-class Radiobutton : public Widget 
-{ 
-    
-public: 
+class Radiobutton : public Widget
+{
+
+public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Radiobutton() = default;
 
@@ -1382,6 +1474,8 @@ class Scale : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Scale() = default;
 
@@ -1408,7 +1502,7 @@ class Scrollbar : public Widget
 
 public:
 
-    using Widget::Widget; // share<Scrollbar>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Scrollbar() = default;
 
@@ -1426,6 +1520,8 @@ class Spinbox : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Spinbox() = default;
 
@@ -1456,7 +1552,7 @@ class Text : public Widget
 
 public:
 
-    using Widget::Widget; // share<Text>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Text() = default;
 
@@ -1700,6 +1796,8 @@ class Button : public Widget
 
 public:
 
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Button() = default;
 
     explicit Button(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1724,6 +1822,8 @@ class Checkbutton : public Widget
 
 public:
 
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Checkbutton() = default;
 
     explicit Checkbutton(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1745,6 +1845,8 @@ class Combobox : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Combobox() = default;
 
@@ -1785,6 +1887,8 @@ class Entry : public Widget
 {
 
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Entry() = default;
 
@@ -1836,7 +1940,7 @@ class Frame : public Widget
 
 public:
 
-    using Widget::Widget; // share<Frame>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Frame() = default;
 
@@ -1848,11 +1952,13 @@ public:
 
 };
 
-class Notebook : public Widget 
+class Notebook : public Widget
 {
 
 public:
-    
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Notebook() = default;
 
     explicit Notebook(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1888,6 +1994,9 @@ public:
 class PanedWindow : public Widget
 {
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     PanedWindow() = default;
 
     explicit PanedWindow(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1913,7 +2022,7 @@ class Label : public Widget
 
 public:
 
-    using Widget::Widget; // share<Label>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Label() = default;
 
@@ -1931,6 +2040,9 @@ public:
 class Labelframe : public Widget
 {
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Labelframe() = default;
 
     explicit Labelframe(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1943,6 +2055,9 @@ public:
 class Menubutton : public Widget
 {
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Menubutton() = default;
 
     explicit Menubutton(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1953,6 +2068,9 @@ public:
 class Progressbar : public Widget
 {
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Progressbar() = default;
 
     explicit Progressbar(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -1969,10 +2087,12 @@ public:
 
 };
 
-class Radiobutton : public Widget 
-{ 
-    
-public: 
+class Radiobutton : public Widget
+{
+
+public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Radiobutton() = default;
 
@@ -1996,6 +2116,9 @@ public:
 class Separator : public Widget
 {
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Separator() = default;
 
     explicit Separator(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -2006,7 +2129,7 @@ class Scale : public Widget
 
 public:
 
-    using Widget::Widget; // share<Scale>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Scale() = default;
 
@@ -2033,7 +2156,7 @@ class Scrollbar : public Widget
 
 public:
 
-    using Widget::Widget; // share<Scrollbar>()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Scrollbar() = default;
 
@@ -2047,10 +2170,12 @@ public:
 
 };
 
-class Spinbox : public Widget 
-{ 
-    
-public: 
+class Spinbox : public Widget
+{
+
+public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
 
     Spinbox() = default;
 
@@ -2075,6 +2200,9 @@ public:
 class Sizegrip : public Widget
 {
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Sizegrip() = default;
 
     explicit Sizegrip(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
@@ -2083,6 +2211,9 @@ public:
 class Treeview : public Widget
 {
 public:
+
+    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+
     Treeview() = default;
 
     explicit Treeview(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
