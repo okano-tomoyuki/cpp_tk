@@ -10,8 +10,6 @@
 #include <array>
 #include <cstdint>
 #include <stdexcept>
-#include <tuple>
-#include <utility>
 
 namespace cpp_tk
 {
@@ -800,75 +798,12 @@ protected:
     void register_bool_callback(const std::string& name, std::function<bool(const std::string&)> callback) const;
 };
 
-namespace detail
-{
-
-template <std::size_t...>
-struct index_sequence {};
-
-template <std::size_t N, std::size_t... Is>
-struct make_index_sequence : make_index_sequence<N - 1, N - 1, Is...> {};
-
-template <std::size_t... Is>
-struct make_index_sequence<0, Is...>
-{
-    using type = index_sequence<Is...>;
-};
-
-} // namespace detail
-
-/**
- * bind()/command()等のコールバックで複数のWidget(派生クラス)をまとめて安全に参照するための
- * ヘルパー。[this]や生の参照/ポインタを直接キャプチャすると、対象が破棄された後にコールバックが
- * 発火した際、解放済みメモリを参照する未定義動作になる(docs/tasks.md C節8.参照)。keep_alive()は
- * 各Widgetのhandle()(shared_ptr<Impl>)をまとめて保持するコピー可能な呼び出し可能オブジェクトを
- * 返し、コールバック内で`auto widgets = self();`のように呼び出すことで、その時点のTcl側の状態を
- * 反映した生きたWidgetの複製をstd::tupleで受け取れる(std::get<N>()で個々の要素にアクセスする)。
- * 本家Python tkinterには存在しないC++固有の安全対策のためのヘルパーだが、Widget数が多い場合に
- * 1つずつhandle()を手書きするコストを避けられる。
- *
- * 使用例:
- *   auto handles = keep_alive(scrollbar_, text_);
- *   scrollbar_.command([handles](const std::string& args) {
- *       auto widgets = handles();
- *       std::get<1>(widgets).yview(args); // text_
- *   });
- */
-template <typename... Ts>
-class WidgetGroup
-{
-public:
-    explicit WidgetGroup(const Ts&... widgets)
-        : handles_(widgets.handle()...)
-    {}
-
-    std::tuple<Ts...> operator()() const
-    {
-        return unpack(typename detail::make_index_sequence<sizeof...(Ts)>::type{});
-    }
-
-private:
-    template <std::size_t... Is>
-    std::tuple<Ts...> unpack(detail::index_sequence<Is...>) const
-    {
-        return std::tuple<Ts...>(Ts(std::get<Is>(handles_))...);
-    }
-
-    std::tuple<decltype(std::declval<Ts>().handle())...> handles_;
-};
-
-template <typename... Ts>
-WidgetGroup<Ts...> keep_alive(const Ts&... widgets)
-{
-    return WidgetGroup<Ts...>(widgets...);
-}
-
 class Tk : public Widget
 {
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     explicit Tk();
 
@@ -935,7 +870,7 @@ class Frame : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Frame() = default;
 
@@ -954,7 +889,7 @@ class Toplevel : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Toplevel() = default;
 
@@ -1022,7 +957,7 @@ class Button : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Button() = default;
 
@@ -1046,7 +981,7 @@ class Canvas : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Canvas() = default;
 
@@ -1149,7 +1084,7 @@ class Checkbutton : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Checkbutton() = default;
 
@@ -1176,7 +1111,7 @@ class Entry : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Entry() = default;
 
@@ -1230,7 +1165,7 @@ class Label : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Label() = default;
 
@@ -1245,7 +1180,7 @@ class LabelFrame : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     LabelFrame() = default;
 
@@ -1263,7 +1198,7 @@ class Listbox : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Listbox() = default;
 
@@ -1319,7 +1254,7 @@ class Menu : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Menu() = default;
 
@@ -1372,7 +1307,7 @@ class Menubutton : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Menubutton() = default;
 
@@ -1392,7 +1327,7 @@ class OptionMenu : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     OptionMenu() = default;
 
@@ -1415,7 +1350,7 @@ class Message : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Message() = default;
 
@@ -1430,7 +1365,7 @@ class PanedWindow : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     PanedWindow() = default;
 
@@ -1449,7 +1384,7 @@ class Radiobutton : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Radiobutton() = default;
 
@@ -1475,7 +1410,7 @@ class Scale : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Scale() = default;
 
@@ -1502,7 +1437,7 @@ class Scrollbar : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Scrollbar() = default;
 
@@ -1521,7 +1456,7 @@ class Spinbox : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Spinbox() = default;
 
@@ -1552,7 +1487,7 @@ class Text : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Text() = default;
 
@@ -1796,7 +1731,7 @@ class Button : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Button() = default;
 
@@ -1822,7 +1757,7 @@ class Checkbutton : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Checkbutton() = default;
 
@@ -1846,7 +1781,7 @@ class Combobox : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Combobox() = default;
 
@@ -1888,7 +1823,7 @@ class Entry : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Entry() = default;
 
@@ -1940,7 +1875,7 @@ class Frame : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Frame() = default;
 
@@ -1957,7 +1892,7 @@ class Notebook : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Notebook() = default;
 
@@ -1995,7 +1930,7 @@ class PanedWindow : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     PanedWindow() = default;
 
@@ -2022,7 +1957,7 @@ class Label : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Label() = default;
 
@@ -2041,7 +1976,7 @@ class Labelframe : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Labelframe() = default;
 
@@ -2056,7 +1991,7 @@ class Menubutton : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Menubutton() = default;
 
@@ -2069,7 +2004,7 @@ class Progressbar : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Progressbar() = default;
 
@@ -2092,7 +2027,7 @@ class Radiobutton : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Radiobutton() = default;
 
@@ -2117,7 +2052,7 @@ class Separator : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Separator() = default;
 
@@ -2129,7 +2064,7 @@ class Scale : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Scale() = default;
 
@@ -2156,7 +2091,7 @@ class Scrollbar : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Scrollbar() = default;
 
@@ -2175,7 +2110,7 @@ class Spinbox : public Widget
 
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Spinbox() = default;
 
@@ -2201,7 +2136,7 @@ class Sizegrip : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Sizegrip() = default;
 
@@ -2212,7 +2147,7 @@ class Treeview : public Widget
 {
 public:
 
-    using Widget::Widget; // keep_alive()用にWidget(shared_ptr<Impl>)を継承する
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
 
     Treeview() = default;
 
