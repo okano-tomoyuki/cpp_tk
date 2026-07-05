@@ -1,0 +1,13 @@
+// Checkbutton::variable(Var&)は非constの参照のため、一時オブジェクト(右辺値)を
+// 渡すコードはコンパイルに失敗しなければならない(docs/tasks.md C-3節参照)。
+#include "cpp_tk.hpp"
+
+namespace tk = cpp_tk;
+
+int main()
+{
+    tk::Tk root;
+    tk::Checkbutton cb(root);
+    cb.variable(tk::BooleanVar(root)); // 一時オブジェクト → コンパイルエラーになるべき
+    return 0;
+}

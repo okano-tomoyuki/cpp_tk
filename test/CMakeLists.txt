@@ -37,3 +37,5 @@ foreach(test_name
         COMMAND ${test_name}
     )
 endforeach()
+
+add_subdirectory(compile_check)
