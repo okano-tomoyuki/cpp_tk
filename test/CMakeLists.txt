@@ -15,6 +15,7 @@ foreach(test_name
     test_round5_a
     test_simpledialog_return
     test_simpledialog_escape
+    test_structural_fixes
 )
     add_executable(${test_name}
         ${test_name}.cpp

@@ -505,7 +505,15 @@ public:
 
     Widget();
 
-    Widget(const Widget& parent, const std::string &type, const std::string& name="");
+    /**
+     * optionsは生成コマンド自体に埋め込む(例: "ttk::panedwindow .p1 -orient horizontal")。
+     * これにより、Tkの一部ウィジェットが持つ「生成時にしか指定できない(生成後にconfigureすると
+     * "attempt to change read-only option"エラーになる)オプション」(例: ttk::panedwindowの-orient、
+     * frame/toplevelの-class/-container/-visual/-colormap/-screen/-use等)も設定できる。
+     * 生成後に再設定可能な通常のオプションについては、生成時に埋め込んでも生成後にconfigureするのと
+     * 最終的な状態は変わらない。
+     */
+    Widget(const Widget& parent, const std::string &type, const std::string& name="", const std::map<std::string, ArgValue>& options={});
 
     // コピーすると「親と同じ型を1引数で渡す」呼び出しが子ウィジェット生成と衝突して
     // 曖昧になり、意図せずコピーコンストラクタが選ばれてしまう事故を防ぐため禁止する

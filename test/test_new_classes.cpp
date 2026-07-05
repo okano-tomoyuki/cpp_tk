@@ -50,10 +50,10 @@ TEST_CASE("ttk::PanedWindow: add/forget/panes/sashpos")
     root.withdraw();
 
     // ttk::panedwindowの-orientは生成時にしか指定できない読み取り専用オプションだが、
-    // cpp_tkのWidget構築は常に「生成」→「configureで別途設定」の2段階のため、現状は
-    // 生成時専用オプションを設定する手段が無い(docs/tasks.md 発見事項として別途記録)。
-    // ここではorient指定を諦め既定(vertical)のままadd/forget/panes/sashposのみ検証する。
-    ttk::PanedWindow pw(root);
+    // Widget基底コンストラクタがoptionsを生成コマンド自体に埋め込むようになった(docs/tasks.md
+    // 第5回棚卸し「構造的な設計課題」対応)ため、コンストラクタのoptionsマップ経由で指定できる。
+    ttk::PanedWindow pw(root, {{"orient", "horizontal"}});
+    CHECK(pw.cget("orient") == "horizontal");
     pw.pack({{"fill", "both"}, {"expand", "true"}});
 
     tk::Frame pane1(pw);
