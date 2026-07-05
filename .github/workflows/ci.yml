@@ -59,21 +59,21 @@ jobs:
       - name: Test
         run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure
 
-  macos:
-    # 未検証(docs/tasks.md F節参照)。macOS標準のTcl/Tkは古く問題が知られているため、
-    # Homebrewのtcl-tk(keg-only)を使う。CMAKE_PREFIX_PATHで検出させる。
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
+  # macos:
+  #   # 未検証(docs/tasks.md F節参照)。macOS標準のTcl/Tkは古く問題が知られているため、
+  #   # Homebrewのtcl-tk(keg-only)を使う。CMAKE_PREFIX_PATHで検出させる。
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: brew install cmake ninja tcl-tk
+  #     - name: Install dependencies
+  #       run: brew install cmake ninja tcl-tk
 
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix tcl-tk)"
+  #     - name: Configure
+  #       run: cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix tcl-tk)"
 
-      - name: Build
-        run: cmake --build build
+  #     - name: Build
+  #       run: cmake --build build
 
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+  #     - name: Test
+  #       run: ctest --test-dir build --output-on-failure

@@ -6,6 +6,11 @@ foreach(test_name
     test_error_policy
     test_interpreter_client
     test_thread_safety
+    test_widget_basics
+    test_a_features
+    test_a_features_round2
+    test_new_classes
+    test_native_misc
 )
     add_executable(${test_name}
         ${test_name}.cpp

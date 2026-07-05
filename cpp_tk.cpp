@@ -946,6 +946,30 @@ Widget& Widget::unbind(const std::string& event)
     return *this;
 }
 
+Widget& Widget::bind_all(const std::string& event, std::function<void(const Event&)> callback)
+{
+    auto cb_name = "all_" + sanitize(event) + "_bindall_cb";
+    register_event_callback(cb_name, callback);
+    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    call({"bind", "all", event, script});
+    return *this;
+}
+
+Widget& Widget::unbind_all(const std::string& event)
+{
+    call({"bind", "all", event, ""});
+    return *this;
+}
+
+Widget& Widget::bind_class(const std::string& class_name, const std::string& event, std::function<void(const Event&)> callback)
+{
+    auto cb_name = sanitize(class_name) + "_" + sanitize(event) + "_bindclass_cb";
+    register_event_callback(cb_name, callback);
+    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    call({"bind", class_name, event, script});
+    return *this;
+}
+
 std::string Widget::after(const int& ms, std::function<void()> callback)
 {
     auto cb_name = sanitize(full_name()) + "_after_cb_" + std::to_string(impl_->after_id++);
@@ -1005,6 +1029,18 @@ int Widget::winfo_height() const
     return safe_stol(ret.c_str());
 }
 
+int Widget::winfo_reqwidth() const
+{
+    auto ret = call({"winfo", "reqwidth", impl_->full_name});
+    return safe_stol(ret.c_str());
+}
+
+int Widget::winfo_reqheight() const
+{
+    auto ret = call({"winfo", "reqheight", impl_->full_name});
+    return safe_stol(ret.c_str());
+}
+
 int Widget::winfo_x() const
 {
     auto ret = call({"winfo", "x", impl_->full_name});
@@ -1049,6 +1085,72 @@ std::vector<std::string> Widget::winfo_children() const
 {
     auto result = call({"winfo", "children", impl_->full_name});
     return impl_->interp->split_list(result);
+}
+
+Widget Widget::nametowidget(const std::string& name) const
+{
+    auto impl = std::make_shared<Impl>();
+    impl->interp = impl_->interp;
+    impl->full_name = name;
+    return Widget(impl);
+}
+
+std::vector<std::string> Widget::grid_slaves() const
+{
+    auto result = call({"grid", "slaves", impl_->full_name});
+    return impl_->interp->split_list(result);
+}
+
+std::vector<std::string> Widget::pack_slaves() const
+{
+    auto result = call({"pack", "slaves", impl_->full_name});
+    return impl_->interp->split_list(result);
+}
+
+std::vector<std::string> Widget::place_slaves() const
+{
+    auto result = call({"place", "slaves", impl_->full_name});
+    return impl_->interp->split_list(result);
+}
+
+// grid/pack/place infoの共通実装。戻り値は"-key1 val1 -key2 val2 ..."形式なので、
+// split_listでトークン化してから2個1組でmapに詰め直す。
+static std::map<std::string, std::string> parse_geometry_info(Interpreter& interp, const std::string& raw)
+{
+    std::map<std::string, std::string> result;
+    auto tokens = interp.split_list(raw);
+    for (std::size_t i = 0; i + 1 < tokens.size(); i += 2)
+    {
+        std::string key = tokens[i];
+        if (!key.empty() && key[0] == '-')
+            key = key.substr(1);
+        result[key] = tokens[i + 1];
+    }
+    return result;
+}
+
+std::map<std::string, std::string> Widget::grid_info() const
+{
+    bool ok = false;
+    auto result = call({"grid", "info", impl_->full_name}, &ok);
+    if (!ok) return {};
+    return parse_geometry_info(*impl_->interp, result);
+}
+
+std::map<std::string, std::string> Widget::pack_info() const
+{
+    bool ok = false;
+    auto result = call({"pack", "info", impl_->full_name}, &ok);
+    if (!ok) return {};
+    return parse_geometry_info(*impl_->interp, result);
+}
+
+std::map<std::string, std::string> Widget::place_info() const
+{
+    bool ok = false;
+    auto result = call({"place", "info", impl_->full_name}, &ok);
+    if (!ok) return {};
+    return parse_geometry_info(*impl_->interp, result);
 }
 
 int Widget::winfo_screenwidth() const
@@ -1132,6 +1234,11 @@ void Widget::wait_variable(const Var& var) const
     call({"tkwait", "variable", var.name()});
 }
 
+void Widget::wait_visibility() const
+{
+    call({"tkwait", "visibility", impl_->full_name});
+}
+
 Widget& Widget::lift()
 {
     call({"raise", impl_->full_name});
@@ -1141,6 +1248,40 @@ Widget& Widget::lift()
 Widget& Widget::lower()
 {
     call({"lower", impl_->full_name});
+    return *this;
+}
+
+std::string Widget::windowingsystem() const
+{
+    return call({"tk", "windowingsystem"});
+}
+
+void Widget::bell()
+{
+    call({"bell"});
+}
+
+double Widget::scaling() const
+{
+    auto ret = call({"tk", "scaling"});
+    return safe_stod(ret.c_str());
+}
+
+Widget& Widget::scaling(double factor)
+{
+    call({"tk", "scaling", factor});
+    return *this;
+}
+
+std::vector<std::string> Widget::bindtags() const
+{
+    auto ret = call({"bindtags", impl_->full_name});
+    return impl_->interp->split_list(ret);
+}
+
+Widget& Widget::bindtags(const std::vector<std::string>& tags)
+{
+    call({"bindtags", impl_->full_name, tags});
     return *this;
 }
 
@@ -1165,6 +1306,58 @@ PhotoImage::PhotoImage(const Widget& parent, const std::map<std::string, ArgValu
 const std::string& PhotoImage::name() const
 {
     return name_;
+}
+
+void PhotoImage::destroy()
+{
+    call({"image", "delete", name_});
+}
+
+BitmapImage::BitmapImage()
+    : interp_(nullptr)
+{}
+
+BitmapImage::BitmapImage(const Widget& parent, const std::map<std::string, ArgValue>& options)
+    : interp_(current_interp())
+    , name_("bmp_" + id)
+{
+    std::vector<ArgValue> words = {"image", "create", "bitmap", name_};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+}
+
+const std::string& BitmapImage::name() const
+{
+    return name_;
+}
+
+void BitmapImage::destroy()
+{
+    call({"image", "delete", name_});
+}
+
+std::vector<std::string> image_names()
+{
+    auto* interp = interp_map[std::this_thread::get_id()];
+    if (!interp) return {};
+    bool ok = false;
+    auto ret = interp->call({"image", "names"}, &ok);
+    if (!ok) return {};
+    return interp->split_list(ret);
+}
+
+std::vector<std::string> image_types()
+{
+    auto* interp = interp_map[std::this_thread::get_id()];
+    if (!interp) return {};
+    bool ok = false;
+    auto ret = interp->call({"image", "types"}, &ok);
+    if (!ok) return {};
+    return interp->split_list(ret);
 }
 
 Tk::Tk()
@@ -1209,6 +1402,18 @@ Tk& Tk::resizable(bool width, bool height)
 {
     call({"wm", "resizable", ".", (int)(width ? 1 : 0), (int)(height ? 1 : 0)});
     return *this;
+}
+
+Tk& Tk::overrideredirect(bool value)
+{
+    call({"wm", "overrideredirect", ".", (int)(value ? 1 : 0)});
+    return *this;
+}
+
+bool Tk::overrideredirect() const
+{
+    auto ret = call({"wm", "overrideredirect", "."});
+    return safe_stol(ret.c_str()) != 0;
 }
 
 Tk& Tk::minsize(int width, int height)
@@ -1401,6 +1606,18 @@ Toplevel& Toplevel::resizable(bool width, bool height)
 {
     call({"wm", "resizable", impl_->full_name, (int)(width ? 1 : 0), (int)(height ? 1 : 0)});
     return *this;
+}
+
+Toplevel& Toplevel::overrideredirect(bool value)
+{
+    call({"wm", "overrideredirect", impl_->full_name, (int)(value ? 1 : 0)});
+    return *this;
+}
+
+bool Toplevel::overrideredirect() const
+{
+    auto ret = call({"wm", "overrideredirect", impl_->full_name});
+    return safe_stol(ret.c_str()) != 0;
 }
 
 Toplevel& Toplevel::minsize(int width, int height)
@@ -1683,6 +1900,17 @@ std::string Canvas::create_image(int x, int y, const std::map<std::string, ArgVa
     return call(words);
 }
 
+std::string Canvas::create_bitmap(int x, int y, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "create", "bitmap", x, y};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return call(words);
+}
+
 std::string Canvas::create_window(int x, int y, const Widget& widget, const std::map<std::string, ArgValue>& options)
 {
     std::vector<ArgValue> words = {impl_->full_name, "create", "window", x, y, "-window", widget.full_name()};
@@ -1704,6 +1932,48 @@ std::vector<std::string> Canvas::find_closest(int x, int y) const
 {
     auto result = call({impl_->full_name, "find", "closest", x, y});
     return impl_->interp->split_list(result);
+}
+
+std::vector<std::string> Canvas::find_all() const
+{
+    auto result = call({impl_->full_name, "find", "all"});
+    return impl_->interp->split_list(result);
+}
+
+std::vector<std::string> Canvas::find_withtag(const std::string& tag_or_id) const
+{
+    auto result = call({impl_->full_name, "find", "withtag", tag_or_id});
+    return impl_->interp->split_list(result);
+}
+
+Canvas& Canvas::tag_raise(const std::string& id_or_tag, const std::string& above_this)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "raise", id_or_tag};
+    if (!above_this.empty())
+        words.push_back(above_this);
+    call(words);
+    return *this;
+}
+
+Canvas& Canvas::tag_lower(const std::string& id_or_tag, const std::string& below_this)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "lower", id_or_tag};
+    if (!below_this.empty())
+        words.push_back(below_this);
+    call(words);
+    return *this;
+}
+
+double Canvas::canvasx(int screen_x) const
+{
+    auto ret = call({impl_->full_name, "canvasx", screen_x});
+    return safe_stod(ret.c_str());
+}
+
+double Canvas::canvasy(int screen_y) const
+{
+    auto ret = call({impl_->full_name, "canvasy", screen_y});
+    return safe_stod(ret.c_str());
 }
 
 Canvas& Canvas::addtag(const std::string& tag, const std::string& where, const std::string& target)
@@ -1856,6 +2126,24 @@ std::string Entry::get() const
     auto ok  = false;
     auto ret = call({impl_->full_name, "get"}, &ok);
     return ret;
+}
+
+Entry& Entry::select_range(const std::string& start, const std::string& end)
+{
+    call({impl_->full_name, "selection", "range", start, end});
+    return *this;
+}
+
+Entry& Entry::selection_clear()
+{
+    call({impl_->full_name, "selection", "clear"});
+    return *this;
+}
+
+bool Entry::select_present() const
+{
+    auto ret = call({impl_->full_name, "selection", "present"});
+    return safe_stol(ret.c_str()) != 0;
 }
 
 Entry& Entry::validate(const std::string& mode, std::function<bool(const std::string&)> callback)
@@ -2085,8 +2373,12 @@ Menu& Menu::entryconfigure(const std::string& index, const std::map<std::string,
 
 int Menu::index(const std::string& pattern) const
 {
-    auto ret = call({impl_->full_name, "index", pattern});
-    if (ret == "none")
+    // patternに一致する項目が無い場合、Tclは"none"を返すのではなくエラーにする
+    // ("bad menu entry index")。successを明示的に見て、失敗時もErrorPolicyに関わらず
+    // 例外を投げず-1を返す(本メソッドの「見つからなければ-1」という契約を守るため)。
+    bool ok = false;
+    auto ret = call({impl_->full_name, "index", pattern}, &ok);
+    if (!ok || ret == "none")
         return -1;
     return safe_stol(ret.c_str());
 }
@@ -2246,11 +2538,23 @@ Scale& Scale::orient(const std::string& dir)
     return *this; 
 }
 
-Scale& Scale::command(std::function<void(const double&)> callback) 
+Scale& Scale::command(std::function<void(const double&)> callback)
 {
     std::string callback_name = sanitize(full_name()) + "_double_cb";
     register_double_callback(callback_name, callback);
     config({{"command", callback_name}});
+    return *this;
+}
+
+double Scale::get() const
+{
+    auto ret = call({impl_->full_name, "get"});
+    return safe_stod(ret.c_str());
+}
+
+Scale& Scale::set(double value)
+{
+    call({impl_->full_name, "set", value});
     return *this;
 }
 
@@ -2305,6 +2609,11 @@ Spinbox& Spinbox::increment(double val)
 {
     config({{"increment", val}});
     return *this;
+}
+
+std::string Spinbox::get() const
+{
+    return call({impl_->full_name, "get"});
 }
 
 Spinbox& Spinbox::textvariable(StringVar& var)
@@ -2421,6 +2730,76 @@ std::string Text::search(const std::string& pattern, const std::string& index, c
 Text& Text::see(const std::string& index)
 {
     call({impl_->full_name, "see", index});
+    return *this;
+}
+
+std::string Text::index(const std::string& index) const
+{
+    return call({impl_->full_name, "index", index});
+}
+
+std::vector<std::string> Text::tag_names(const std::string& index) const
+{
+    std::vector<ArgValue> words = {impl_->full_name, "tag", "names"};
+    if (!index.empty())
+        words.push_back(index);
+    auto ret = call(words);
+    return impl_->interp->split_list(ret);
+}
+
+std::vector<std::string> Text::tag_ranges(const std::string& tag) const
+{
+    auto ret = call({impl_->full_name, "tag", "ranges", tag});
+    return impl_->interp->split_list(ret);
+}
+
+Text& Text::tag_raise(const std::string& tag, const std::string& above_this)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "tag", "raise", tag};
+    if (!above_this.empty())
+        words.push_back(above_this);
+    call(words);
+    return *this;
+}
+
+Text& Text::tag_lower(const std::string& tag, const std::string& below_this)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "tag", "lower", tag};
+    if (!below_this.empty())
+        words.push_back(below_this);
+    call(words);
+    return *this;
+}
+
+Text& Text::tag_delete(const std::string& tag)
+{
+    call({impl_->full_name, "tag", "delete", tag});
+    return *this;
+}
+
+Text& Text::edit_undo()
+{
+    bool ok = false;
+    call({impl_->full_name, "edit", "undo"}, &ok); // undoスタックが空/無効な場合Tclがエラーにするため無視する
+    return *this;
+}
+
+Text& Text::edit_redo()
+{
+    bool ok = false;
+    call({impl_->full_name, "edit", "redo"}, &ok);
+    return *this;
+}
+
+bool Text::edit_modified() const
+{
+    auto ret = call({impl_->full_name, "edit", "modified"});
+    return safe_stol(ret.c_str()) != 0;
+}
+
+Text& Text::edit_modified(bool value)
+{
+    call({impl_->full_name, "edit", "modified", value});
     return *this;
 }
 
@@ -2826,6 +3205,24 @@ std::string Entry::get() const
     return ret;
 }
 
+Entry& Entry::select_range(const std::string& start, const std::string& end)
+{
+    call({impl_->full_name, "selection", "range", start, end});
+    return *this;
+}
+
+Entry& Entry::selection_clear()
+{
+    call({impl_->full_name, "selection", "clear"});
+    return *this;
+}
+
+bool Entry::select_present() const
+{
+    auto ret = call({impl_->full_name, "selection", "present"});
+    return safe_stol(ret.c_str()) != 0;
+}
+
 Entry& Entry::validate(const std::string& mode, std::function<bool(const std::string&)> callback)
 {
     auto cb_name = sanitize(full_name()) + "_validate_cb";
@@ -2895,7 +3292,19 @@ Labelframe& Labelframe::text(const std::string& text)
     return *this;
 }
 
-Notebook::Notebook(const Widget& parent, const std::map<std::string, ArgValue>& options) 
+Menubutton::Menubutton(const Widget& parent, const std::map<std::string, ArgValue>& options)
+    : Widget(parent, "ttk::menubutton", "ttk_menubutton")
+{
+    config(options);
+}
+
+Menubutton& Menubutton::menu(Menu* menu)
+{
+    config({{"menu", menu->full_name()}});
+    return *this;
+}
+
+Notebook::Notebook(const Widget& parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::notebook", "ttk_notebook") 
 {
     config(options);
@@ -2911,6 +3320,100 @@ Notebook& Notebook::select(const std::string& tab_id)
 {
     call({impl_->full_name, "select", tab_id});
     return *this;
+}
+
+std::string Notebook::select() const
+{
+    return call({impl_->full_name, "select"});
+}
+
+Notebook& Notebook::tab(const std::string& tab_id, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "tab", tab_id};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+std::string Notebook::tab(const std::string& tab_id, const std::string& option) const
+{
+    return call({impl_->full_name, "tab", tab_id, "-" + option});
+}
+
+std::vector<std::string> Notebook::tabs() const
+{
+    auto ret = call({impl_->full_name, "tabs"});
+    return impl_->interp->split_list(ret);
+}
+
+Notebook& Notebook::forget(const std::string& tab_id)
+{
+    call({impl_->full_name, "forget", tab_id});
+    return *this;
+}
+
+Notebook& Notebook::hide(const std::string& tab_id)
+{
+    call({impl_->full_name, "hide", tab_id});
+    return *this;
+}
+
+int Notebook::index(const std::string& tab_id) const
+{
+    auto ret = call({impl_->full_name, "index", tab_id});
+    return safe_stol(ret.c_str());
+}
+
+PanedWindow::PanedWindow(const Widget& parent, const std::map<std::string, ArgValue>& options)
+    : Widget(parent, "ttk::panedwindow", "ttk_panedwindow")
+{
+    config(options);
+}
+
+PanedWindow& PanedWindow::orient(const std::string& dir)
+{
+    config({{"orient", dir}});
+    return *this;
+}
+
+PanedWindow& PanedWindow::add(const Widget& child, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "add", child.full_name()};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+PanedWindow& PanedWindow::forget(const Widget& child)
+{
+    call({impl_->full_name, "forget", child.full_name()});
+    return *this;
+}
+
+int PanedWindow::sashpos(int index) const
+{
+    auto ret = call({impl_->full_name, "sashpos", index});
+    return safe_stol(ret.c_str());
+}
+
+PanedWindow& PanedWindow::sashpos(int index, int newpos)
+{
+    call({impl_->full_name, "sashpos", index, newpos});
+    return *this;
+}
+
+std::vector<std::string> PanedWindow::panes() const
+{
+    auto ret = call({impl_->full_name, "panes"});
+    return impl_->interp->split_list(ret);
 }
 
 Progressbar::Progressbar(const Widget& parent, const std::map<std::string, ArgValue>& options)
@@ -3014,11 +3517,23 @@ Scale& Scale::orient(const std::string& dir)
     return *this; 
 }
 
-Scale& Scale::command(std::function<void(const double&)> callback) 
+Scale& Scale::command(std::function<void(const double&)> callback)
 {
     std::string callback_name = sanitize(full_name()) + "_double_cb";
     register_double_callback(callback_name, callback);
     config({{"command", callback_name}});
+    return *this;
+}
+
+double Scale::get() const
+{
+    auto ret = call({impl_->full_name, "get"});
+    return safe_stod(ret.c_str());
+}
+
+Scale& Scale::set(double value)
+{
+    call({impl_->full_name, "set", value});
     return *this;
 }
 
@@ -3073,6 +3588,11 @@ Spinbox& Spinbox::increment(double val)
 {
     config({{"increment", val}});
     return *this;
+}
+
+std::string Spinbox::get() const
+{
+    return call({impl_->full_name, "get"});
 }
 
 Spinbox& Spinbox::textvariable(StringVar& var)
@@ -3168,39 +3688,31 @@ std::vector<std::string> Treeview::selection() const
     return impl_->interp->split_list(ret);
 }
 
+// Tclの"ttk::treeview selection set/add/remove/toggle"はitemsを「1個のTclリスト引数」として
+// 受け取る(iid毎に別々の位置引数として渡すものではない)。iidにスペースを含む場合、位置引数を
+// 複数渡すとTclがその最初の引数だけを空白区切りのリストとして誤って再分割してしまうため、
+// ArgValue(vector<string>)のSTRING_LIST(Tcl_NewListObj経由で各要素を正しくquoteする)を使う。
 Treeview& Treeview::selection_set(const std::vector<std::string>& iids)
 {
-    std::vector<ArgValue> words = {impl_->full_name, "selection", "set"};
-    for (const auto& iid : iids)
-        words.push_back(iid);
-    call(words);
+    call({impl_->full_name, "selection", "set", iids});
     return *this;
 }
 
 Treeview& Treeview::selection_add(const std::vector<std::string>& iids)
 {
-    std::vector<ArgValue> words = {impl_->full_name, "selection", "add"};
-    for (const auto& iid : iids)
-        words.push_back(iid);
-    call(words);
+    call({impl_->full_name, "selection", "add", iids});
     return *this;
 }
 
 Treeview& Treeview::selection_remove(const std::vector<std::string>& iids)
 {
-    std::vector<ArgValue> words = {impl_->full_name, "selection", "remove"};
-    for (const auto& iid : iids)
-        words.push_back(iid);
-    call(words);
+    call({impl_->full_name, "selection", "remove", iids});
     return *this;
 }
 
 Treeview& Treeview::selection_toggle(const std::vector<std::string>& iids)
 {
-    std::vector<ArgValue> words = {impl_->full_name, "selection", "toggle"};
-    for (const auto& iid : iids)
-        words.push_back(iid);
-    call(words);
+    call({impl_->full_name, "selection", "toggle", iids});
     return *this;
 }
 
@@ -3329,6 +3841,12 @@ Treeview& Treeview::tag_bind(const std::string& tag, const std::string& event, s
 
     call({impl_->full_name, "tag", "bind", tag, event, script});
     return *this;
+}
+
+std::vector<std::string> Treeview::tag_has(const std::string& tag) const
+{
+    auto ret = call({impl_->full_name, "tag", "has", tag});
+    return impl_->interp->split_list(ret);
 }
 
 std::string Treeview::identify_row(int y) const

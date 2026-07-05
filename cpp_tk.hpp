@@ -413,6 +413,13 @@ public:
 
     const std::string& name() const;
 
+    /**
+     * 画像を明示的に破棄する(Tcl "image delete"相当)。cpp_tkのPhotoImageはWidget::destroy()と
+     * 同様にRAIIでは破棄せず明示呼び出しに委ねているため、長時間稼働するアプリで多数の画像を
+     * 生成・破棄する場合はこれを呼ばないとリークする。
+     */
+    void destroy();
+
 protected:
     Interpreter* interp() const override { return interp_; }
 
@@ -423,6 +430,39 @@ private:
     std::string  name_;
 };
 
+/**
+ * X11ビットマップ(1bit深度)画像を表す(Python tkinter.BitmapImage相当)。本家では
+ * PhotoImageと共にImageという共通基底を持つが、cpp_tkのPhotoImageは既にObject/
+ * InterpreterClientを直接継承する構造のため、共通基底の導入は見送りPhotoImageと
+ * 同じ構造で独立実装している。
+ */
+class BitmapImage : public Object, public InterpreterClient
+{
+public:
+    BitmapImage();
+
+    explicit BitmapImage(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
+
+    const std::string& name() const;
+
+    /** 画像を明示的に破棄する(Tcl "image delete"相当)。PhotoImage::destroy()と同じ理由で明示呼び出しに委ねる。 */
+    void destroy();
+
+protected:
+    Interpreter* interp() const override { return interp_; }
+
+    const char* type_name() const override { return "BitmapImage"; }
+
+private:
+    Interpreter* interp_;
+    std::string  name_;
+};
+
+/** 現在定義されている全画像名の一覧を返す(Tcl "image names"相当)。 */
+std::vector<std::string> image_names();
+
+/** サポートされている画像フォーマット種別一覧を返す(Tcl "image types"相当)。 */
+std::vector<std::string> image_types();
 
 class Widget : public Object, public InterpreterClient
 {
@@ -476,6 +516,15 @@ public:
     /** event に対して bind() で登録した処理を解除する(Python Misc.unbind()相当の簡略版)。 */
     Widget& unbind(const std::string& event);
 
+    /** アプリケーション内の全ウィジェットに対するグローバルなバインドを設定する(Python Misc.bind_all()相当)。 */
+    Widget& bind_all(const std::string& event, std::function<void(const Event&)> callback);
+
+    /** bind_all()で登録した処理を解除する(Python Misc.unbind_all()相当の簡略版)。 */
+    Widget& unbind_all(const std::string& event);
+
+    /** 指定クラス名(winfo_class()が返す名前)の全ウィジェットに対するバインドを設定する(Python Misc.bind_class()相当)。 */
+    Widget& bind_class(const std::string& class_name, const std::string& event, std::function<void(const Event&)> callback);
+
     std::string after(const int& ms, std::function<void()> callback);
 
     void after_idle(std::function<void()> callback);
@@ -497,6 +546,12 @@ public:
 
     int winfo_height() const;
 
+    /** レイアウト計算前の要求サイズ(Python Misc.winfo_reqwidth()相当)。 */
+    int winfo_reqwidth() const;
+
+    /** レイアウト計算前の要求サイズ(Python Misc.winfo_reqheight()相当)。 */
+    int winfo_reqheight() const;
+
     int winfo_x() const;
 
     int winfo_y() const;
@@ -512,6 +567,28 @@ public:
     std::string winfo_toplevel() const;
 
     std::vector<std::string> winfo_children() const;
+
+    /** full_name文字列からWidgetハンドルを再構築する(Python Misc.nametowidget()相当の簡略版。
+     *  具体的な派生型(Button等)ではなくWidgetとして返るため、config/bind/winfo_*等の共通操作のみ可能)。 */
+    Widget nametowidget(const std::string& name) const;
+
+    /** このウィジェットをgridで管理している子ウィジェットのフルネーム一覧(Python Misc.grid_slaves()相当)。 */
+    std::vector<std::string> grid_slaves() const;
+
+    /** このウィジェットをpackで管理している子ウィジェットのフルネーム一覧(Python Misc.pack_slaves()相当)。 */
+    std::vector<std::string> pack_slaves() const;
+
+    /** このウィジェットをplaceで管理している子ウィジェットのフルネーム一覧(Python Misc.place_slaves()相当)。 */
+    std::vector<std::string> place_slaves() const;
+
+    /** 現在のgrid配置オプションを返す(Python Misc.grid_info()相当)。gridで管理されていなければ空。 */
+    std::map<std::string, std::string> grid_info() const;
+
+    /** 現在のpack配置オプションを返す(Python Misc.pack_info()相当)。packで管理されていなければ空。 */
+    std::map<std::string, std::string> pack_info() const;
+
+    /** 現在のplace配置オプションを返す(Python Misc.place_info()相当)。placeで管理されていなければ空。 */
+    std::map<std::string, std::string> place_info() const;
 
     int winfo_screenwidth() const;
 
@@ -554,11 +631,39 @@ public:
     /** varの値が書き込まれるまで呼び出しをブロックする(Python Misc.wait_variable()相当)。 */
     void wait_variable(const Var& var) const;
 
+    /**
+     * このウィジェットが画面上に実際に表示される(viewableになる)まで呼び出しをブロックする
+     * (Python Misc.wait_visibility()相当)。モーダルダイアログの定石(wait_visibility()の後に
+     * grab_set()する)で使う。
+     */
+    void wait_visibility() const;
+
     /** 兄弟ウィジェットの重なり順で最前面に上げる(Python Misc.lift()相当)。 */
     Widget& lift();
 
     /** 兄弟ウィジェットの重なり順で最背面に下げる(Python Misc.lower()相当)。 */
     Widget& lower();
+
+    /** 実行環境のウィンドウシステムを返す("x11"/"win32"/"aqua"のいずれか、Tcl"tk windowingsystem"相当)。 */
+    std::string windowingsystem() const;
+
+    /** システムベルを鳴らす(Python Misc.bell()相当)。 */
+    void bell();
+
+    /** 1ポイントあたりのピクセル数(DPIスケール)を返す(Tcl"tk scaling"相当)。 */
+    double scaling() const;
+
+    /** 1ポイントあたりのピクセル数(DPIスケール)を設定する。 */
+    Widget& scaling(double factor);
+
+    /**
+     * イベント配送時にどのバインドタグをどの順序で辿るかを返す(Python Misc.bindtags()の
+     * 引数無し版相当)。既定は[このウィジェット, そのクラス名, そのトップレベル, "all"]の4つ。
+     */
+    std::vector<std::string> bindtags() const;
+
+    /** バインドタグの並びを設定する(Python Misc.bindtags(tagList)相当)。 */
+    Widget& bindtags(const std::vector<std::string>& tags);
 
 protected:
 
@@ -627,6 +732,12 @@ public:
     Tk& protocol(const std::string& name, std::function<void()> handler);
 
     Tk& resizable(bool width, bool height);
+
+    /** タイトルバー・枠を持たないウィンドウにする(Python Tk.overrideredirect()相当)。 */
+    Tk& overrideredirect(bool value);
+
+    /** 現在overrideredirect状態かを返す。 */
+    bool overrideredirect() const;
 
     Tk& minsize(int width, int height);
 
@@ -701,6 +812,12 @@ public:
     Toplevel& protocol(const std::string& name, std::function<void()> handler);
 
     Toplevel& resizable(bool width, bool height);
+
+    /** タイトルバー・枠を持たないウィンドウにする(Python Toplevel.overrideredirect()相当)。 */
+    Toplevel& overrideredirect(bool value);
+
+    /** 現在overrideredirect状態かを返す。 */
+    bool overrideredirect() const;
 
     Toplevel& minsize(int width, int height);
 
@@ -797,15 +914,35 @@ public:
     
     std::string create_arc(int x1, int y1, int x2, int y2, const std::map<std::string, ArgValue>& options = {}); 
     
-    std::string create_image(int x, int y, const std::map<std::string, ArgValue>& options = {}); 
-    
-    std::string create_window(int x, int y, const Widget& widget, const std::map<std::string, ArgValue>& options = {}); 
-    
-    std::vector<std::string> find_overlapping(int x1, int y1, int x2, int y2) const; 
-    
-    std::vector<std::string> find_closest(int x, int y) const; 
-    
-    Canvas& addtag(const std::string& tag, const std::string& where, const std::string& target); 
+    std::string create_image(int x, int y, const std::map<std::string, ArgValue>& options = {});
+
+    std::string create_bitmap(int x, int y, const std::map<std::string, ArgValue>& options = {});
+
+    std::string create_window(int x, int y, const Widget& widget, const std::map<std::string, ArgValue>& options = {});
+
+    std::vector<std::string> find_overlapping(int x1, int y1, int x2, int y2) const;
+
+    std::vector<std::string> find_closest(int x, int y) const;
+
+    /** 全アイテムのID一覧を返す(Python Canvas.find_all()相当)。 */
+    std::vector<std::string> find_all() const;
+
+    /** 指定タグ/IDを持つアイテムのID一覧を返す(Python Canvas.find_withtag()相当)。 */
+    std::vector<std::string> find_withtag(const std::string& tag_or_id) const;
+
+    /** 指定アイテム/タグを兄弟の重なり順で最前面に上げる(above_thisを指定するとその直後に配置)。 */
+    Canvas& tag_raise(const std::string& id_or_tag, const std::string& above_this = "");
+
+    /** 指定アイテム/タグを兄弟の重なり順で最背面に下げる(below_thisを指定するとその直前に配置)。 */
+    Canvas& tag_lower(const std::string& id_or_tag, const std::string& below_this = "");
+
+    /** スクリーン座標をキャンバス座標(スクロール分を考慮した論理座標)に変換する(Python Canvas.canvasx()相当)。 */
+    double canvasx(int screen_x) const;
+
+    /** スクリーン座標をキャンバス座標(スクロール分を考慮した論理座標)に変換する(Python Canvas.canvasy()相当)。 */
+    double canvasy(int screen_y) const;
+
+    Canvas& addtag(const std::string& tag, const std::string& where, const std::string& target);
     
     Canvas& dtag(const std::string& tag, const std::string& target); 
     
@@ -887,6 +1024,15 @@ public:
     Entry& erase(const std::string& start, const std::string& end = "");
 
     std::string get() const;
+
+    /** start〜endの範囲を選択状態にする(Python Entry.select_range()相当)。 */
+    Entry& select_range(const std::string& start, const std::string& end);
+
+    /** 選択状態を解除する(Python Entry.select_clear()相当)。 */
+    Entry& selection_clear();
+
+    /** 選択範囲が存在するかを返す(Python Entry.select_present()相当)。 */
+    bool select_present() const;
 
     /**
      * 入力値のリアルタイム検証(Python Entry(validate=mode, validatecommand=(vcmd,"%P"))相当の簡略版)。
@@ -1119,12 +1265,20 @@ public:
 
     Scale& command(std::function<void(const double&)> callback);
 
+    /** 現在の値を取得する(Python Scale.get()相当)。 */
+    double get() const;
+
+    /** 値を設定する(Python Scale.set()相当)。 */
+    Scale& set(double value);
+
 };
 
-class Scrollbar : public Widget 
+class Scrollbar : public Widget
 {
 
 public:
+
+    using Widget::Widget; // share<Scrollbar>()用にWidget(shared_ptr<Impl>)を継承する
 
     Scrollbar() = default;
 
@@ -1138,20 +1292,27 @@ public:
 
 };
 
-class Spinbox : public Widget 
-{ 
-    
-public: 
+class Spinbox : public Widget
+{
+
+public:
 
     Spinbox() = default;
 
-    explicit Spinbox(const Widget& parent, const std::map<std::string, ArgValue>& options = {}); 
-    
-    Spinbox& from(double val); 
-    
-    Spinbox& to(double val); 
-    
-    Spinbox& increment(double val); 
+    explicit Spinbox(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
+
+    Spinbox& from(double val);
+
+    Spinbox& to(double val);
+
+    Spinbox& increment(double val);
+
+    /**
+     * 現在の文字列値を取得する(Python Spinbox.get()相当)。Tclのspinbox/ttk::spinboxウィジェット
+     * コマンドには"set"サブコマンドが存在しない(Entry::set()を削除したのと同じ理由、
+     * docs/tasks.md C節参照)ため、値の設定はtextvariable経由、またはerase()+insert()で行う。
+     */
+    std::string get() const;
     
     /** name()を読むだけで保持はしない。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
     Spinbox& textvariable(StringVar& var);
@@ -1197,6 +1358,36 @@ public:
 
     /** 指定位置が見えるようスクロールする。 */
     Text& see(const std::string& index);
+
+    /** indexで指定した位置を正規化した"line.col"形式の文字列に解決する(Python Text.index()相当)。 */
+    std::string index(const std::string& index) const;
+
+    /** 定義されている全タグ名(indexを省略時)、またはindexに付与されているタグ名を返す(Python Text.tag_names()相当)。 */
+    std::vector<std::string> tag_names(const std::string& index = "") const;
+
+    /** 指定タグが付与されている範囲(開始・終了indexが交互に並ぶ)を返す(Python Text.tag_ranges()相当)。 */
+    std::vector<std::string> tag_ranges(const std::string& tag) const;
+
+    /** 指定タグを重なり順で最前面に上げる(Python Text.tag_raise()相当)。 */
+    Text& tag_raise(const std::string& tag, const std::string& above_this = "");
+
+    /** 指定タグを重なり順で最背面に下げる(Python Text.tag_lower()相当)。 */
+    Text& tag_lower(const std::string& tag, const std::string& below_this = "");
+
+    /** タグの定義自体を削除する(Python Text.tag_delete()相当)。 */
+    Text& tag_delete(const std::string& tag);
+
+    /** 直前の編集操作を取り消す(Python Text.edit_undo()相当)。undoスタックが無効/空なら何もしない。 */
+    Text& edit_undo();
+
+    /** undoで取り消した操作をやり直す(Python Text.edit_redo()相当)。 */
+    Text& edit_redo();
+
+    /** 変更フラグを取得する(Python Text.edit_modified()相当)。 */
+    bool edit_modified() const;
+
+    /** 変更フラグを設定する(Python Text.edit_modified(bool)相当)。 */
+    Text& edit_modified(bool value);
 
     /** index1とindex2の前後関係をopで判定する(opは"<"/"<="/"=="/">="/">"/"!="、Python Text.compare()相当)。 */
     bool compare(const std::string& index1, const std::string& op, const std::string& index2) const;
@@ -1446,6 +1637,15 @@ public:
 
     Entry& font(const font::Font& font);
 
+    /** start〜endの範囲を選択状態にする(Python Entry.select_range()相当)。 */
+    Entry& select_range(const std::string& start, const std::string& end);
+
+    /** 選択状態を解除する(Python Entry.select_clear()相当)。 */
+    Entry& selection_clear();
+
+    /** 選択範囲が存在するかを返す(Python Entry.select_present()相当)。 */
+    bool select_present() const;
+
     /**
      * 入力値のリアルタイム検証(Python Entry(validate=mode, validatecommand=(vcmd,"%P"))相当の簡略版)。
      * 置換コードは"%P"(検証対象になる編集後の全文字列)のみ対応する(%d/%i/%s/%S/%v/%V/%W等は非対応)。
@@ -1485,12 +1685,59 @@ public:
 
     /** tab_idは数値indexの文字列表現、タブ内容ウィジェットのフルネーム、または"current"を受け付ける(Python Notebook.select()相当)。 */
     Notebook& select(const std::string& tab_id);
+
+    /** 現在選択されているタブのウィンドウ名を返す(Python Notebook.select()の引数無し版相当)。 */
+    std::string select() const;
+
+    /** タブの設定を変更する(Python Notebook.tab(tab_id, **kw)相当)。 */
+    Notebook& tab(const std::string& tab_id, const std::map<std::string, ArgValue>& options);
+
+    /** タブの設定値を1つ読み取る(Python Notebook.tab(tab_id, option)相当)。 */
+    std::string tab(const std::string& tab_id, const std::string& option) const;
+
+    /** 管理下にある全タブ(ウィンドウのフルネーム)一覧を返す(Python Notebook.tabs()相当)。 */
+    std::vector<std::string> tabs() const;
+
+    /** タブを取り除き、ウィンドウの管理も解除する(Python Notebook.forget()相当)。 */
+    Notebook& forget(const std::string& tab_id);
+
+    /** タブを一時的に非表示にする(再度add_tabやtab()経由で復帰可能、Python Notebook.hide()相当)。 */
+    Notebook& hide(const std::string& tab_id);
+
+    /** タブの数値indexを返す(Python Notebook.index()相当)。 */
+    int index(const std::string& tab_id) const;
+};
+
+/** ttk版のPanedWindow(Python tkinter.ttk.PanedWindow相当)。 */
+class PanedWindow : public Widget
+{
+public:
+    PanedWindow() = default;
+
+    explicit PanedWindow(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
+
+    PanedWindow& orient(const std::string& dir);
+
+    PanedWindow& add(const Widget& child, const std::map<std::string, ArgValue>& options = {});
+
+    PanedWindow& forget(const Widget& child);
+
+    /** 指定indexの区切り(sash)のX/Y座標を取得する(Python PanedWindow.sashpos()の引数無し版相当)。 */
+    int sashpos(int index) const;
+
+    /** 指定indexの区切り(sash)の位置を変更する(Python PanedWindow.sashpos(index, newpos)相当)。 */
+    PanedWindow& sashpos(int index, int newpos);
+
+    /** 管理下にある全ペイン(ウィンドウのフルネーム)一覧を返す(Python PanedWindow.panes()相当)。 */
+    std::vector<std::string> panes() const;
 };
 
 class Label : public Widget
 {
 
 public:
+
+    using Widget::Widget; // share<Label>()用にWidget(shared_ptr<Impl>)を継承する
 
     Label() = default;
 
@@ -1513,6 +1760,18 @@ public:
     explicit Labelframe(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
     Labelframe& text(const std::string& text);
+};
+
+/** ttk版のMenubutton(Python tkinter.ttk.Menubutton相当)。menu()には引き続きclassicのMenuを紐づける
+ *  (ttkに専用のMenuクラスは存在せず、本家同様classicのMenuを共用する)。 */
+class Menubutton : public Widget
+{
+public:
+    Menubutton() = default;
+
+    explicit Menubutton(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
+
+    Menubutton& menu(Menu* menu);
 };
 
 class Progressbar : public Widget
@@ -1566,10 +1825,12 @@ public:
     explicit Separator(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 };
 
-class Scale : public Widget 
+class Scale : public Widget
 {
 
 public:
+
+    using Widget::Widget; // share<Scale>()用にWidget(shared_ptr<Impl>)を継承する
 
     Scale() = default;
 
@@ -1583,9 +1844,15 @@ public:
 
     Scale& command(std::function<void(const double&)> callback);
 
+    /** 現在の値を取得する(Python Scale.get()相当)。 */
+    double get() const;
+
+    /** 値を設定する(Python Scale.set()相当)。 */
+    Scale& set(double value);
+
 };
 
-class Scrollbar : public Widget 
+class Scrollbar : public Widget
 {
 
 public:
@@ -1617,8 +1884,11 @@ public:
     
     Spinbox& to(double val); 
     
-    Spinbox& increment(double val); 
-    
+    Spinbox& increment(double val);
+
+    /** 現在の文字列値を取得する(Python Spinbox.get()相当)。setが無い理由はclassic版のコメント参照。 */
+    std::string get() const;
+
     /** name()を読むだけで保持はしない。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
     Spinbox& textvariable(StringVar& var);
     
@@ -1702,6 +1972,9 @@ public:
     Treeview& tag_configure(const std::string& tag, const std::map<std::string, ArgValue>& options);
 
     Treeview& tag_bind(const std::string& tag, const std::string& event, std::function<void(const Event&)> callback);
+
+    /** 指定タグが付与されている行のiid一覧を返す(Python Treeview.tag_has()相当)。 */
+    std::vector<std::string> tag_has(const std::string& tag) const;
 
     std::string identify_row(int y) const;
 
