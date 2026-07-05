@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    # このプロジェクトの開発環境(MSYS2 mingw64)に合わせている。
+    # 動作確認はWindows/MSYS2でのみ実施済み(docs/tasks.md F節参照)。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-tcl
+            mingw-w64-x86_64-tk
+
+      - name: Configure
+        shell: msys2 {0}
+        run: cmake -S . -B build -G Ninja
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build
+
+      - name: Test
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure
+
+  linux:
+    # 未検証(docs/tasks.md F節参照)。TkはXの仮想ディスプレイ(Xvfb)が無いと
+    # ウィンドウ(withdraw()するものも含む)を生成できないため、xvfb-runで包む。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build tcl-dev tk-dev xvfb
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: xvfb-run --auto-servernum ctest --test-dir build --output-on-failure
+
+  macos:
+    # 未検証(docs/tasks.md F節参照)。macOS標準のTcl/Tkは古く問題が知られているため、
+    # Homebrewのtcl-tk(keg-only)を使う。CMAKE_PREFIX_PATHで検出させる。
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja tcl-tk
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix tcl-tk)"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
