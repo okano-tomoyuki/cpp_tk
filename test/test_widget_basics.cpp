@@ -230,7 +230,7 @@ TEST_CASE("wait_variable: Varが書き込まれるまでブロックし、書き
 {
     tk::Tk root;
     root.withdraw();
-    tk::StringVar var(root);
+    tk::StringVar var;
 
     // wait_variable()自体はネストしたイベントループでブロックするため、ブロック中も
     // Tclのタイマーイベントは処理される。事前に仕掛けたafter()がその間に発火してvarを書き換える。

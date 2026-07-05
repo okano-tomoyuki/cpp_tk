@@ -9,6 +9,6 @@ int main()
 {
     tk::Tk root;
     ttk::Entry entry(root);
-    entry.textvariable(tk::StringVar(root)); // 一時オブジェクト → コンパイルエラーになるべき
+    entry.textvariable(tk::StringVar()); // 一時オブジェクト → コンパイルエラーになるべき
     return 0;
 }

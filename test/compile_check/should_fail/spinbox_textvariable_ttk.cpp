@@ -9,6 +9,6 @@ int main()
 {
     tk::Tk root;
     ttk::Spinbox spin(root);
-    spin.textvariable(tk::StringVar(root)); // 一時オブジェクト → コンパイルエラーになるべき
+    spin.textvariable(tk::StringVar()); // 一時オブジェクト → コンパイルエラーになるべき
     return 0;
 }

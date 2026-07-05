@@ -8,6 +8,6 @@ int main()
 {
     tk::Tk root;
     tk::Radiobutton rb(root);
-    rb.variable(tk::StringVar(root)); // 一時オブジェクト → コンパイルエラーになるべき
+    rb.variable(tk::StringVar()); // 一時オブジェクト → コンパイルエラーになるべき
     return 0;
 }

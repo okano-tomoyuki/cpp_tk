@@ -18,7 +18,7 @@ TEST_CASE("PhotoImage: put/get/width/height/blankが機能する")
     tk::Tk root;
     root.withdraw();
 
-    tk::PhotoImage img(root);
+    tk::PhotoImage img;
     CHECK_NOTHROW(img.put("{red green} {blue red}"));
     CHECK(img.width() == 2);
     CHECK(img.height() == 2);
@@ -34,7 +34,7 @@ TEST_CASE("PhotoImage: copy/zoom/subsampleが新規PhotoImageを返す")
     tk::Tk root;
     root.withdraw();
 
-    tk::PhotoImage img(root);
+    tk::PhotoImage img;
     img.put("{red green blue red} {blue red green blue} {red green blue red} {blue red green blue}");
     REQUIRE(img.width() == 4);
     REQUIRE(img.height() == 4);
@@ -52,7 +52,7 @@ TEST_CASE("PhotoImage: copy/zoom/subsampleが新規PhotoImageを返す")
     CHECK(subsampled.width() == 2);
     CHECK(subsampled.height() == 2);
 
-    tk::PhotoImage dest(root);
+    tk::PhotoImage dest;
     CHECK_NOTHROW(dest.copy_from(img));
     CHECK(dest.width() == 4);
 }
@@ -67,7 +67,7 @@ TEST_CASE("BitmapImage: width/heightが機能する")
         "#define im_height 8\n"
         "static unsigned char im_bits[] = {\n"
         "  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};\n";
-    tk::BitmapImage img(root, {{"data", xbm}});
+    tk::BitmapImage img({{"data", xbm}});
 
     CHECK(img.width() == 8);
     CHECK(img.height() == 8);
@@ -80,7 +80,7 @@ TEST_CASE("ttk::Style: layout()のgetter/setterが機能する")
     tk::Tk root;
     root.withdraw();
 
-    ttk::Style style(root);
+    ttk::Style style;
     auto original_layout = style.layout("TButton");
     CHECK_FALSE(original_layout.empty());
 
@@ -93,7 +93,7 @@ TEST_CASE("ttk::Style: theme_create()で新規テーマを定義できる")
     tk::Tk root;
     root.withdraw();
 
-    ttk::Style style(root);
+    ttk::Style style;
     auto before = style.theme_names();
 
     style.theme_create("cpp_tk_test_theme", "default");
@@ -151,7 +151,7 @@ TEST_CASE("Font::copy: 設定を引き継いだ複製を作る")
     tk::Tk root;
     root.withdraw();
 
-    tk::font::Font original(root, {{"family", "Courier"}, {"size", 14}});
+    tk::font::Font original({{"family", "Courier"}, {"size", 14}});
     auto copied = original.copy();
 
     CHECK(copied.name() != original.name());

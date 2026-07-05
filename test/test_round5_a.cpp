@@ -19,11 +19,11 @@ TEST_CASE("Menu: add_command/add_checkbutton/add_radiobuttonにcallbackを指定
     menu.add_command({{"label", "cmd"}}, [&command_fired]() { command_fired = true; });
 
     bool check_fired = false;
-    tk::BooleanVar bv(root);
+    tk::BooleanVar bv;
     menu.add_checkbutton({{"label", "chk"}, {"variable", bv}}, [&check_fired]() { check_fired = true; });
 
     bool radio_fired = false;
-    tk::StringVar rv(root);
+    tk::StringVar rv;
     menu.add_radiobutton({{"label", "radio"}, {"variable", rv}, {"value", "r1"}}, [&radio_fired]() { radio_fired = true; });
 
     // menuの既定tearoff項目(index 0)によりcommand/checkbutton/radiobuttonはindex 1,2,3になる。

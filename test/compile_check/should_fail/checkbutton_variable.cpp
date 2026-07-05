@@ -8,6 +8,6 @@ int main()
 {
     tk::Tk root;
     tk::Checkbutton cb(root);
-    cb.variable(tk::BooleanVar(root)); // 一時オブジェクト → コンパイルエラーになるべき
+    cb.variable(tk::BooleanVar()); // 一時オブジェクト → コンパイルエラーになるべき
     return 0;
 }

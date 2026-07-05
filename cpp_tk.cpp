@@ -659,11 +659,6 @@ Var::Var()
     : interp_(nullptr)
 {}
 
-Var::Var(const Widget& parent, const std::string& type)
-    : interp_(current_interp())
-    , name_(type + "_var_" + id)
-{}
-
 const std::string& Var::name() const
 {
     return name_;
@@ -699,10 +694,14 @@ void Var::trace_var(std::function<void(const double&)> callback)
     if (p) p->trace_var(name_, callback);
 }
 
-StringVar::StringVar(const Widget& parent)
-    : Var(parent, "string")
+StringVar::StringVar()
 {
-    set_var("");
+    interp_ = current_interp();
+    if (interp_)
+    {
+        name_ = "string_var_" + id;
+        set_var("");
+    }
 }
 
 void StringVar::set(const std::string &value)
@@ -720,10 +719,14 @@ void StringVar::trace(std::function<void(const std::string&)> callback)
     trace_var(callback);
 }
 
-BooleanVar::BooleanVar(const Widget& parent)
-    : Var(parent, "bool")
+BooleanVar::BooleanVar()
 {
-    set_var("0");
+    interp_ = current_interp();
+    if (interp_)
+    {
+        name_ = "bool_var_" + id;
+        set_var("0");
+    }
 }
 
 void BooleanVar::set(bool value)
@@ -743,10 +746,14 @@ void BooleanVar::trace(std::function<void(const bool&)> callback)
     });
 }
 
-IntVar::IntVar(const Widget& parent)
-    : Var(parent, "int")
+IntVar::IntVar()
 {
-    set_var("0");
+    interp_ = current_interp();
+    if (interp_)
+    {
+        name_ = "int_var_" + id;
+        set_var("0");
+    }
 }
 
 void IntVar::set(const int& value)
@@ -764,10 +771,14 @@ void IntVar::trace(std::function<void(const int&)> callback)
     trace_var(callback);
 }
 
-DoubleVar::DoubleVar(const Widget& parent)
-    : Var(parent, "double")
+DoubleVar::DoubleVar()
 {
-    set_var("0.0");
+    interp_ = current_interp();
+    if (interp_)
+    {
+        name_ = "double_var_" + id;
+        set_var("0.0");
+    }
 }
 
 void DoubleVar::set(const double& value)
@@ -1376,14 +1387,13 @@ Widget Widget::tk_focusPrev() const
     return nametowidget(ret);
 }
 
-PhotoImage::PhotoImage()
-    : interp_(nullptr)
-{}
-
-PhotoImage::PhotoImage(const Widget& parent, const std::map<std::string, ArgValue>& options)
+PhotoImage::PhotoImage(const std::map<std::string, ArgValue>& options)
     : interp_(current_interp())
-    , name_("img_" + id)
 {
+    if (!interp_)
+        return;
+
+    name_ = "img_" + id;
     std::vector<ArgValue> words = {"image", "create", "photo", name_};
     for (const auto& kv : options)
     {
@@ -1441,10 +1451,9 @@ PhotoImage& PhotoImage::copy_from(const PhotoImage& source, const std::map<std::
 
 PhotoImage PhotoImage::copy() const
 {
+    // デフォルト引数のPhotoImage()はcurrent_interp()に束縛された空のphotoイメージを既に
+    // 生成済みのため、明示的な"image create photo"の再呼び出しは不要。
     PhotoImage result;
-    result.interp_ = interp_;
-    result.name_   = "img_" + result.id;
-    call({"image", "create", "photo", result.name_});
     call({result.name_, "copy", name_});
     return result;
 }
@@ -1452,9 +1461,6 @@ PhotoImage PhotoImage::copy() const
 PhotoImage PhotoImage::zoom(int x, int y) const
 {
     PhotoImage result;
-    result.interp_ = interp_;
-    result.name_   = "img_" + result.id;
-    call({"image", "create", "photo", result.name_});
     if (y > 0)
         call({result.name_, "copy", name_, "-zoom", x, y});
     else
@@ -1465,9 +1471,6 @@ PhotoImage PhotoImage::zoom(int x, int y) const
 PhotoImage PhotoImage::subsample(int x, int y) const
 {
     PhotoImage result;
-    result.interp_ = interp_;
-    result.name_   = "img_" + result.id;
-    call({"image", "create", "photo", result.name_});
     if (y > 0)
         call({result.name_, "copy", name_, "-subsample", x, y});
     else
@@ -1485,14 +1488,13 @@ int PhotoImage::height() const
     return safe_stol(call({"image", "height", name_}).c_str());
 }
 
-BitmapImage::BitmapImage()
-    : interp_(nullptr)
-{}
-
-BitmapImage::BitmapImage(const Widget& parent, const std::map<std::string, ArgValue>& options)
+BitmapImage::BitmapImage(const std::map<std::string, ArgValue>& options)
     : interp_(current_interp())
-    , name_("bmp_" + id)
 {
+    if (!interp_)
+        return;
+
+    name_ = "bmp_" + id;
     std::vector<ArgValue> words = {"image", "create", "bitmap", name_};
     for (const auto& kv : options)
     {
@@ -3158,15 +3160,13 @@ Text& Text::window_create(const std::string& index, const Widget& window, const 
 namespace font
 {
 
-Font::Font()
-    : interp_(nullptr)
-{}
-
-Font::Font(const Widget& parent, const std::map<std::string, ArgValue>& option,
-           const std::string& name, bool exists)
-    : name_(name.empty() ? ("font_" + id) : name)
-    , interp_(current_interp())
+Font::Font(const std::map<std::string, ArgValue>& option, const std::string& name, bool exists)
+    : interp_(current_interp())
 {
+    if (!interp_)
+        return;
+
+    name_ = name.empty() ? ("font_" + id) : name;
     if (!exists)
     {
         call({"font", "create", name_});
@@ -3177,9 +3177,9 @@ Font::Font(const Widget& parent, const std::map<std::string, ArgValue>& option,
     }
 }
 
-Font nametofont(const Widget& parent, const std::string& name)
+Font nametofont(const std::string& name)
 {
-    return Font(parent, {}, name, /*exists=*/true);
+    return Font({}, name, /*exists=*/true);
 }
 
 Font& Font::config(const std::map<std::string, ArgValue>& option)
@@ -3236,14 +3236,14 @@ std::string Font::metrics(const std::string& option) const
 
 Font Font::copy() const
 {
+    // デフォルト引数のFont()はcurrent_interp()に束縛された(既定属性の)フォントを既に生成済み
+    // のため、"font create"の再呼び出しではなく"font configure"で属性を上書きする。
     Font result;
-    result.interp_ = interp_;
-    result.name_   = "font_" + result.id;
 
     auto spec   = call({"font", "actual", name_});
     auto tokens = interp_->split_list(spec);
 
-    std::vector<ArgValue> words = {"font", "create", result.name_};
+    std::vector<ArgValue> words = {"font", "configure", result.name_};
     for (const auto& token : tokens)
         words.emplace_back(token);
     call(words);
@@ -3286,7 +3286,7 @@ const std::string& Font::name() const
 namespace ttk
 {
 
-Style::Style(const Widget& parent)
+Style::Style()
     : interp_(current_interp())
 {}
 

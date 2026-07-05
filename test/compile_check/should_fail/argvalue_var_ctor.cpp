@@ -9,7 +9,7 @@ int main()
 {
     tk::Tk root;
     tk::Menu menu(root);
-    // 一時オブジェクト(tk::BooleanVar(root))をArgValueへ変換する箇所でコンパイルエラーになるべき
-    menu.add_checkbutton({{"label", "item"}, {"variable", tk::BooleanVar(root)}});
+    // 一時オブジェクト(tk::BooleanVar())をArgValueへ変換する箇所でコンパイルエラーになるべき
+    menu.add_checkbutton({{"label", "item"}, {"variable", tk::BooleanVar()}});
     return 0;
 }

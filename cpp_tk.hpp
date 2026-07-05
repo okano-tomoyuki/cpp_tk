@@ -297,9 +297,8 @@ class Var : public Object, public InterpreterClient
 {
 
 public:
+    /** 未初期化のプレースホルダを作る(interp_==nullptr)。メンバとして仮置きし、後で代入する用途向け。 */
     Var();
-
-    explicit Var(const Widget& parent, const std::string& type);
 
     Var(const Var&) = default;
 
@@ -342,9 +341,15 @@ class StringVar : public Var
 
 public:
 
-    StringVar() = default;
-
-    StringVar(const Widget& parent);
+    /**
+     * 呼び出しスレッドのcurrent interpreter(現在実行中のtk::Tk、current_interp()参照)が
+     * あればそれに束縛して実体を作り、無ければVar()同様の未初期化プレースホルダのままになる
+     * (Python StringVar()相当。かつては`const Widget& parent`を取っていたが、実際には
+     * parentを一切参照せずcurrent_interp()だけを使っていたため、実態に合わせて廃止した)。
+     * Tk構築前にメンバとして仮置きしたい場合は、Tk構築後に`var = StringVar();`のように
+     * 改めて構築し直して move代入すればよい(Widgetの`Widget()`→move代入と同じ流儀)。
+     */
+    StringVar();
 
     void set(const std::string &value);
 
@@ -358,9 +363,8 @@ class BooleanVar : public Var
 {
 public:
 
-    BooleanVar() = default;
-
-    explicit BooleanVar(const Widget& parent);
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    BooleanVar();
 
     void set(bool value);
 
@@ -375,9 +379,8 @@ class IntVar : public Var
 
 public:
 
-    IntVar() = default;
-
-    IntVar(const Widget& parent);
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    IntVar();
 
     void set(const int& value);
 
@@ -392,9 +395,8 @@ class DoubleVar : public Var
 
 public:
 
-    DoubleVar() = default;
-
-    DoubleVar(const Widget& parent);
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    DoubleVar();
 
     void set(const double& value);
 
@@ -407,9 +409,12 @@ public:
 class PhotoImage : public Object, public InterpreterClient
 {
 public:
-    PhotoImage();
-
-    explicit PhotoImage(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
+    /**
+     * 呼び出しスレッドのcurrent interpreterがあればそれに束縛して実体を作り、無ければ
+     * 未初期化のプレースホルダのままになる(StringVar()と同じ理由・同じ流儀。かつては
+     * `const Widget& parent`を取っていたが、実際には参照していなかったため廃止した)。
+     */
+    explicit PhotoImage(const std::map<std::string, ArgValue>& options = {});
 
     const std::string& name() const;
 
@@ -467,9 +472,8 @@ private:
 class BitmapImage : public Object, public InterpreterClient
 {
 public:
-    BitmapImage();
-
-    explicit BitmapImage(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
+    /** PhotoImage(options)と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    explicit BitmapImage(const std::map<std::string, ArgValue>& options = {});
 
     const std::string& name() const;
 
@@ -1551,14 +1555,14 @@ class Font : public Object, public InterpreterClient
 {
 public:
 
-    Font();
-
     /**
      * name/existsはPython tkinter.font.Font(root=None, font=None, name=None, exists=False, **options)
      * に対応する。nameを指定しなければ内部で一意な名前を生成する。existsがtrueの場合は
      * "font create"を呼ばず、既存の名前付きフォント(TkDefaultFont等)をそのまま参照する。
+     * 呼び出しスレッドのcurrent interpreterがあればそれに束縛して実体を作り、無ければ未初期化の
+     * プレースホルダのままになる(StringVar()と同じ理由・同じ流儀でparentを廃止した)。
      */
-    explicit Font(const Widget& parent, const std::map<std::string, ArgValue>& option = {},
+    explicit Font(const std::map<std::string, ArgValue>& option = {},
                   const std::string& name = "", bool exists = false);
 
     Font& config(const std::map<std::string, ArgValue>& option);
@@ -1605,11 +1609,10 @@ private:
 
 /**
  * 既存の名前付きフォント(TkDefaultFont等)を参照するFontを返す(Python tkinter.font.nametofont相当)。
- * 本家はFont(name=name, exists=True, root=root)を呼ぶだけの薄いラッパーであり、本実装も同様に
+ * 本家はFont(name=name, exists=True)を呼ぶだけの薄いラッパーであり、本実装も同様に
  * 公開コンストラクタを呼ぶだけで、Fontの非公開メンバへ特別にアクセスする必要はない。
- * 本家のrootはNone許容(暗黙のデフォルトルート)だが、cpp_tkはそれを持たないため必須引数にする。
  */
-Font nametofont(const Widget& parent, const std::string& name);
+Font nametofont(const std::string& name);
 
 /** 利用可能なフォントファミリ名一覧を返す(Python tkinter.font.families()相当)。 */
 std::vector<std::string> families();
@@ -1632,9 +1635,8 @@ class Style : public InterpreterClient
 {
 public:
 
-    Style() = default;
-
-    explicit Style(const Widget& parent);
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    Style();
 
     /** 指定style(例: "TButton"、全体既定は"." )の既定オプションを設定する。 */
     Style& configure(const std::string& style_name, const std::map<std::string, ArgValue>& options);

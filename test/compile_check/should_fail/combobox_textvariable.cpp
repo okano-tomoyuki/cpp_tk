@@ -9,6 +9,6 @@ int main()
 {
     tk::Tk root;
     ttk::Combobox combo(root);
-    combo.textvariable(tk::StringVar(root)); // 一時オブジェクト → コンパイルエラーになるべき
+    combo.textvariable(tk::StringVar()); // 一時オブジェクト → コンパイルエラーになるべき
     return 0;
 }

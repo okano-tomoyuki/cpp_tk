@@ -77,7 +77,7 @@ TEST_CASE("image_names/image_types: 生成した画像が一覧に現れ、destr
     CHECK(has_photo);
     CHECK(has_bitmap);
 
-    tk::PhotoImage img(root);
+    tk::PhotoImage img;
     auto names_before = tk::image_names();
     bool found = false;
     for (auto& n : names_before) if (n == img.name()) found = true;
