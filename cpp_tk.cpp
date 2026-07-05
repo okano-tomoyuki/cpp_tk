@@ -49,11 +49,21 @@ double safe_stod(const char* s)
 std::string sanitize(const std::string& s)
 {
     std::string ret;
-    for (char c : s) 
+    for (char c : s)
     {
         ret += std::isalnum(c) ? c : '_';
     }
     return ret;
+}
+
+// Menuの各項目("-command")用の一意なTclプロシージャ名を生成する。項目はindexでしか
+// 識別できず、indexは挿入/削除で変動するため、Menuインスタンス単位ではなくプロセス全体で
+// 単調増加するカウンタを使って衝突を避ける(以前設定した項目のindexが後から他の項目に
+// ずれても、既存の"-command"が指す名前付きプロシージャ自体は変わらないため実害は無い)。
+std::string next_menu_entry_callback_name(const std::string& menu_full_name)
+{
+    static int counter = 0;
+    return sanitize(menu_full_name) + "_menu_entry_cb_" + std::to_string(counter++);
 }
 
 // ArgValue を対応する Tcl_Obj* に変換する内部ヘルパー
@@ -1285,6 +1295,80 @@ Widget& Widget::bindtags(const std::vector<std::string>& tags)
     return *this;
 }
 
+std::string Widget::grab_current() const
+{
+    bool ok = false;
+    auto ret = call({"grab", "current", impl_->full_name}, &ok);
+    if (!ok) return "";
+    return ret;
+}
+
+std::string Widget::grab_status() const
+{
+    return call({"grab", "status", impl_->full_name});
+}
+
+std::string Widget::winfo_id() const
+{
+    return call({"winfo", "id", impl_->full_name});
+}
+
+std::string Widget::winfo_name() const
+{
+    return call({"winfo", "name", impl_->full_name});
+}
+
+std::string Widget::winfo_parent() const
+{
+    return call({"winfo", "parent", impl_->full_name});
+}
+
+int Widget::winfo_depth() const
+{
+    return safe_stol(call({"winfo", "depth", impl_->full_name}).c_str());
+}
+
+std::string Widget::winfo_geometry() const
+{
+    return call({"winfo", "geometry", impl_->full_name});
+}
+
+std::string Widget::winfo_containing(int root_x, int root_y) const
+{
+    bool ok = false;
+    auto ret = call({"winfo", "containing", "-displayof", impl_->full_name, root_x, root_y}, &ok);
+    if (!ok) return "";
+    return ret;
+}
+
+void Widget::option_add(const std::string& pattern, const std::string& value, const std::string& priority)
+{
+    if (priority.empty())
+        call({"option", "add", pattern, value});
+    else
+        call({"option", "add", pattern, value, priority});
+}
+
+std::string Widget::option_get(const std::string& name, const std::string& class_name) const
+{
+    bool ok = false;
+    auto ret = call({"option", "get", impl_->full_name, name, class_name}, &ok);
+    if (!ok) return "";
+    return ret;
+}
+
+Widget Widget::tk_focusNext() const
+{
+    auto ret = call({"tk_focusNext", impl_->full_name});
+    return nametowidget(ret);
+}
+
+Widget Widget::tk_focusPrev() const
+{
+    auto ret = call({"tk_focusPrev", impl_->full_name});
+    return nametowidget(ret);
+}
+
 PhotoImage::PhotoImage()
     : interp_(nullptr)
 {}
@@ -1313,6 +1397,87 @@ void PhotoImage::destroy()
     call({"image", "delete", name_});
 }
 
+PhotoImage& PhotoImage::put(const std::string& data, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {name_, "put", data};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+std::string PhotoImage::get(int x, int y) const
+{
+    return call({name_, "get", x, y});
+}
+
+PhotoImage& PhotoImage::blank()
+{
+    call({name_, "blank"});
+    return *this;
+}
+
+PhotoImage& PhotoImage::copy_from(const PhotoImage& source, const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {name_, "copy", source.name_};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    call(words);
+    return *this;
+}
+
+PhotoImage PhotoImage::copy() const
+{
+    PhotoImage result;
+    result.interp_ = interp_;
+    result.name_   = "img_" + result.id;
+    call({"image", "create", "photo", result.name_});
+    call({result.name_, "copy", name_});
+    return result;
+}
+
+PhotoImage PhotoImage::zoom(int x, int y) const
+{
+    PhotoImage result;
+    result.interp_ = interp_;
+    result.name_   = "img_" + result.id;
+    call({"image", "create", "photo", result.name_});
+    if (y > 0)
+        call({result.name_, "copy", name_, "-zoom", x, y});
+    else
+        call({result.name_, "copy", name_, "-zoom", x});
+    return result;
+}
+
+PhotoImage PhotoImage::subsample(int x, int y) const
+{
+    PhotoImage result;
+    result.interp_ = interp_;
+    result.name_   = "img_" + result.id;
+    call({"image", "create", "photo", result.name_});
+    if (y > 0)
+        call({result.name_, "copy", name_, "-subsample", x, y});
+    else
+        call({result.name_, "copy", name_, "-subsample", x});
+    return result;
+}
+
+int PhotoImage::width() const
+{
+    return safe_stol(call({"image", "width", name_}).c_str());
+}
+
+int PhotoImage::height() const
+{
+    return safe_stol(call({"image", "height", name_}).c_str());
+}
+
 BitmapImage::BitmapImage()
     : interp_(nullptr)
 {}
@@ -1338,6 +1503,16 @@ const std::string& BitmapImage::name() const
 void BitmapImage::destroy()
 {
     call({"image", "delete", name_});
+}
+
+int BitmapImage::width() const
+{
+    return safe_stol(call({"image", "width", name_}).c_str());
+}
+
+int BitmapImage::height() const
+{
+    return safe_stol(call({"image", "height", name_}).c_str());
 }
 
 std::vector<std::string> image_names()
@@ -1504,7 +1679,18 @@ Tk& Tk::iconbitmap(const std::string& bitmap_path)
     return *this;
 }
 
-void Tk::mainloop() 
+Tk& Tk::iconname(const std::string& name)
+{
+    call({"wm", "iconname", ".", name});
+    return *this;
+}
+
+std::string Tk::iconname() const
+{
+    return call({"wm", "iconname", "."});
+}
+
+void Tk::mainloop()
 {
     call({"vwait", "forever"});
 }
@@ -1706,6 +1892,17 @@ Toplevel& Toplevel::iconbitmap(const std::string& bitmap_path)
 {
     call({"wm", "iconbitmap", impl_->full_name, bitmap_path});
     return *this;
+}
+
+Toplevel& Toplevel::iconname(const std::string& name)
+{
+    call({"wm", "iconname", impl_->full_name, name});
+    return *this;
+}
+
+std::string Toplevel::iconname() const
+{
+    return call({"wm", "iconname", impl_->full_name});
 }
 
 Toplevel& Toplevel::transient(const Widget& master)
@@ -2073,6 +2270,17 @@ Canvas& Canvas::height(const int &height)
     return *this;
 }
 
+std::string Canvas::postscript(const std::map<std::string, ArgValue>& options)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "postscript"};
+    for (const auto& kv : options)
+    {
+        words.push_back("-" + kv.first);
+        words.push_back(kv.second);
+    }
+    return call(words);
+}
+
 Entry::Entry(const Widget& parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "entry", "e")
 {
@@ -2126,6 +2334,23 @@ std::string Entry::get() const
     auto ok  = false;
     auto ret = call({impl_->full_name, "get"}, &ok);
     return ret;
+}
+
+Entry& Entry::xscrollcommand(std::function<void(std::string)> callback)
+{
+    auto cb_name = sanitize(full_name()) + "_xstring_cb";
+    register_string_callback(cb_name, callback);
+    config({{"xscrollcommand", cb_name}});
+    return *this;
+}
+
+Entry& Entry::xview(const std::string& args)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "xview"};
+    for (const auto& token : impl_->interp->split_list(args))
+        words.emplace_back(token);
+    call(words);
+    return *this;
 }
 
 Entry& Entry::select_range(const std::string& start, const std::string& end)
@@ -2233,6 +2458,32 @@ Listbox& Listbox::yscrollcommand(std::function<void(std::string)> callback)
     return *this;
 }
 
+Listbox& Listbox::yview(const std::string& args)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "yview"};
+    for (const auto& token : impl_->interp->split_list(args))
+        words.emplace_back(token);
+    call(words);
+    return *this;
+}
+
+Listbox& Listbox::xscrollcommand(std::function<void(std::string)> callback)
+{
+    auto cb_name = sanitize(full_name()) + "_xstring_cb";
+    register_string_callback(cb_name, callback);
+    config({{"xscrollcommand", cb_name}});
+    return *this;
+}
+
+Listbox& Listbox::xview(const std::string& args)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "xview"};
+    for (const auto& token : impl_->interp->split_list(args))
+        words.emplace_back(token);
+    call(words);
+    return *this;
+}
+
 Listbox& Listbox::selectmode(const std::string& mode)
 {
     config({{"selectmode", mode}}); // "single", "browse", "multiple", "extended"
@@ -2293,13 +2544,20 @@ Menu::Menu(const Widget& parent, const std::map<std::string, ArgValue>& options)
     config(options);
 }
 
-Menu& Menu::add_command(const std::map<std::string, ArgValue>& options)
+Menu& Menu::add_command(const std::map<std::string, ArgValue>& options, std::function<void()> callback)
 {
     std::vector<ArgValue> words = {impl_->full_name, "add", "command"};
     for (const auto& kv : options)
     {
         words.push_back("-" + kv.first);
         words.push_back(kv.second);
+    }
+    if (callback)
+    {
+        auto cb_name = next_menu_entry_callback_name(impl_->full_name);
+        register_void_callback(cb_name, callback);
+        words.push_back("-command");
+        words.push_back(cb_name);
     }
     call(words);
     return *this;
@@ -2323,7 +2581,7 @@ Menu& Menu::add_separator()
     return *this;
 }
 
-Menu& Menu::add_checkbutton(const std::map<std::string, ArgValue>& options)
+Menu& Menu::add_checkbutton(const std::map<std::string, ArgValue>& options, std::function<void()> callback)
 {
     std::vector<ArgValue> words = {impl_->full_name, "add", "checkbutton"};
     for (const auto& kv : options)
@@ -2331,11 +2589,18 @@ Menu& Menu::add_checkbutton(const std::map<std::string, ArgValue>& options)
         words.push_back("-" + kv.first);
         words.push_back(kv.second);
     }
+    if (callback)
+    {
+        auto cb_name = next_menu_entry_callback_name(impl_->full_name);
+        register_void_callback(cb_name, callback);
+        words.push_back("-command");
+        words.push_back(cb_name);
+    }
     call(words);
     return *this;
 }
 
-Menu& Menu::add_radiobutton(const std::map<std::string, ArgValue>& options)
+Menu& Menu::add_radiobutton(const std::map<std::string, ArgValue>& options, std::function<void()> callback)
 {
     std::vector<ArgValue> words = {impl_->full_name, "add", "radiobutton"};
     for (const auto& kv : options)
@@ -2343,11 +2608,18 @@ Menu& Menu::add_radiobutton(const std::map<std::string, ArgValue>& options)
         words.push_back("-" + kv.first);
         words.push_back(kv.second);
     }
+    if (callback)
+    {
+        auto cb_name = next_menu_entry_callback_name(impl_->full_name);
+        register_void_callback(cb_name, callback);
+        words.push_back("-command");
+        words.push_back(cb_name);
+    }
     call(words);
     return *this;
 }
 
-Menu& Menu::insert(const std::string& index, const std::string& item_type, const std::map<std::string, ArgValue>& options)
+Menu& Menu::insert(const std::string& index, const std::string& item_type, const std::map<std::string, ArgValue>& options, std::function<void()> callback)
 {
     std::vector<ArgValue> words = {impl_->full_name, "insert", index, item_type};
     for (const auto& kv : options)
@@ -2355,17 +2627,31 @@ Menu& Menu::insert(const std::string& index, const std::string& item_type, const
         words.push_back("-" + kv.first);
         words.push_back(kv.second);
     }
+    if (callback)
+    {
+        auto cb_name = next_menu_entry_callback_name(impl_->full_name);
+        register_void_callback(cb_name, callback);
+        words.push_back("-command");
+        words.push_back(cb_name);
+    }
     call(words);
     return *this;
 }
 
-Menu& Menu::entryconfigure(const std::string& index, const std::map<std::string, ArgValue>& options)
+Menu& Menu::entryconfigure(const std::string& index, const std::map<std::string, ArgValue>& options, std::function<void()> callback)
 {
     std::vector<ArgValue> words = {impl_->full_name, "entryconfigure", index};
     for (const auto& kv : options)
     {
         words.push_back("-" + kv.first);
         words.push_back(kv.second);
+    }
+    if (callback)
+    {
+        auto cb_name = next_menu_entry_callback_name(impl_->full_name);
+        register_void_callback(cb_name, callback);
+        words.push_back("-command");
+        words.push_back(cb_name);
     }
     call(words);
     return *this;
@@ -2670,7 +2956,38 @@ Text& Text::yview(const std::string& args)
     return *this;
 }
 
-Text& Text::wrap(const std::string& mode) 
+Text& Text::xscrollcommand(std::function<void(std::string)> callback)
+{
+    auto cb_name = sanitize(full_name()) + "_xstring_cb";
+    register_string_callback(cb_name, callback);
+    config({{"xscrollcommand", cb_name}});
+    return *this;
+}
+
+Text& Text::xview(const std::string& args)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "xview"};
+    for (const auto& token : impl_->interp->split_list(args))
+        words.emplace_back(token);
+    call(words);
+    return *this;
+}
+
+std::vector<int> Text::bbox(const std::string& index) const
+{
+    auto ok     = false;
+    auto result = call({impl_->full_name, "bbox", index}, &ok);
+
+    std::vector<int> box;
+    if (!ok)
+        return box;
+
+    for (const auto& token : impl_->interp->split_list(result))
+        box.push_back(safe_stol(token.c_str()));
+    return box;
+}
+
+Text& Text::wrap(const std::string& mode)
 {
     config({{"wrap", mode}});
     return *this;
@@ -2925,6 +3242,42 @@ std::string Font::metrics(const std::string& option) const
     return call({"font", "metrics", name_, "-" + option});
 }
 
+Font Font::copy() const
+{
+    Font result;
+    result.interp_ = interp_;
+    result.name_   = "font_" + result.id;
+
+    auto spec   = call({"font", "actual", name_});
+    auto tokens = interp_->split_list(spec);
+
+    std::vector<ArgValue> words = {"font", "create", result.name_};
+    for (const auto& token : tokens)
+        words.emplace_back(token);
+    call(words);
+    return result;
+}
+
+std::vector<std::string> families()
+{
+    auto* interp = interp_map[std::this_thread::get_id()];
+    if (!interp) return {};
+    bool ok = false;
+    auto ret = interp->call({"font", "families"}, &ok);
+    if (!ok) return {};
+    return interp->split_list(ret);
+}
+
+std::vector<std::string> names()
+{
+    auto* interp = interp_map[std::this_thread::get_id()];
+    if (!interp) return {};
+    bool ok = false;
+    auto ret = interp->call({"font", "names"}, &ok);
+    if (!ok) return {};
+    return interp->split_list(ret);
+}
+
 int Font::measure(const std::string& text) const
 {
     auto ret = call({"font", "measure", name_, text});
@@ -2989,6 +3342,43 @@ Style& Style::theme_use(const std::string& theme_name)
 std::string Style::theme_use() const
 {
     return call({"ttk::style", "theme", "use"});
+}
+
+std::string Style::layout(const std::string& style_name) const
+{
+    return call({"ttk::style", "layout", style_name});
+}
+
+Style& Style::layout(const std::string& style_name, const std::string& layout_spec)
+{
+    call({"ttk::style", "layout", style_name, layout_spec});
+    return *this;
+}
+
+Style& Style::element_create(const std::string& name, const std::string& type, const std::vector<ArgValue>& args)
+{
+    std::vector<ArgValue> words = {"ttk::style", "element", "create", name, type};
+    for (const auto& arg : args)
+        words.push_back(arg);
+    call(words);
+    return *this;
+}
+
+Style& Style::theme_create(const std::string& name, const std::string& parent, const std::string& settings_script)
+{
+    std::vector<ArgValue> words = {"ttk::style", "theme", "create", name};
+    if (!parent.empty())
+    {
+        words.push_back("-parent");
+        words.push_back(parent);
+    }
+    if (!settings_script.empty())
+    {
+        words.push_back("-settings");
+        words.push_back(settings_script);
+    }
+    call(words);
+    return *this;
 }
 
 Button::Button(const Widget& parent, const std::map<std::string, ArgValue>& options)
@@ -3203,6 +3593,23 @@ std::string Entry::get() const
     auto ok  = false;
     auto ret = call({impl_->full_name, "get"}, &ok);
     return ret;
+}
+
+Entry& Entry::xscrollcommand(std::function<void(std::string)> callback)
+{
+    auto cb_name = sanitize(full_name()) + "_xstring_cb";
+    register_string_callback(cb_name, callback);
+    config({{"xscrollcommand", cb_name}});
+    return *this;
+}
+
+Entry& Entry::xview(const std::string& args)
+{
+    std::vector<ArgValue> words = {impl_->full_name, "xview"};
+    for (const auto& token : impl_->interp->split_list(args))
+        words.emplace_back(token);
+    call(words);
+    return *this;
 }
 
 Entry& Entry::select_range(const std::string& start, const std::string& end)
@@ -3658,13 +4065,22 @@ Treeview& Treeview::item(const std::string& iid, const std::map<std::string, Arg
     return *this;
 }
 
-Treeview& Treeview::heading(const std::string& column, const std::map<std::string, ArgValue>& options)
+Treeview& Treeview::heading(const std::string& column, const std::map<std::string, ArgValue>& options, std::function<void()> callback)
 {
     std::vector<ArgValue> words = {impl_->full_name, "heading", column};
     for (const auto& kv : options)
     {
         words.push_back("-" + kv.first);
         words.push_back(kv.second);
+    }
+    if (callback)
+    {
+        // 列名(column)はindexと違い挿入/削除で変動しない安定した識別子のため、
+        // Menuの項目コールバックと異なりfull_name+columnから決定的に名前を生成できる。
+        auto cb_name = sanitize(impl_->full_name) + "_heading_" + sanitize(column) + "_cb";
+        register_void_callback(cb_name, callback);
+        words.push_back("-command");
+        words.push_back(cb_name);
     }
     call(words);
     return *this;

@@ -11,6 +11,10 @@ foreach(test_name
     test_a_features_round2
     test_new_classes
     test_native_misc
+    test_round5_bcd
+    test_round5_a
+    test_simpledialog_return
+    test_simpledialog_escape
 )
     add_executable(${test_name}
         ${test_name}.cpp

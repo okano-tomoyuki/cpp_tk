@@ -420,6 +420,34 @@ public:
      */
     void destroy();
 
+    /** 画素データを書き込む(Python PhotoImage.put(data, to=...)相当)。dataは"{r g b} {r g b} ..."形式のTclリスト
+     *  文字列(行ごとに波括弧で囲んだ画素値の並び)をそのまま渡す(整形はユーザー側で行う簡略版)。 */
+    PhotoImage& put(const std::string& data, const std::map<std::string, ArgValue>& options = {});
+
+    /** 指定座標の画素値を"r g b"形式の文字列で返す(Python PhotoImage.get(x, y)相当)。 */
+    std::string get(int x, int y) const;
+
+    /** 画像内容を消去し透明にする(Python PhotoImage.blank()相当)。 */
+    PhotoImage& blank();
+
+    /** sourceの内容を(options指定範囲で)自分自身へ取り込む(Tclの"imageName copy source"に忠実な版)。 */
+    PhotoImage& copy_from(const PhotoImage& source, const std::map<std::string, ArgValue>& options = {});
+
+    /** 自分自身の複製を新規PhotoImageとして作成して返す(Python PhotoImage.copy()相当)。 */
+    PhotoImage copy() const;
+
+    /** x(, y)倍に拡大した複製を新規PhotoImageとして作成して返す(Python PhotoImage.zoom(x, y)相当)。 */
+    PhotoImage zoom(int x, int y = -1) const;
+
+    /** x(, y)分の1に縮小した複製を新規PhotoImageとして作成して返す(Python PhotoImage.subsample(x, y)相当)。 */
+    PhotoImage subsample(int x, int y = -1) const;
+
+    /** 画像の幅(px)を返す(Tcl"image width"相当。本家ではPhotoImage/BitmapImage共通のImage基底が持つ)。 */
+    int width() const;
+
+    /** 画像の高さ(px)を返す(Tcl"image height"相当)。 */
+    int height() const;
+
 protected:
     Interpreter* interp() const override { return interp_; }
 
@@ -447,6 +475,12 @@ public:
 
     /** 画像を明示的に破棄する(Tcl "image delete"相当)。PhotoImage::destroy()と同じ理由で明示呼び出しに委ねる。 */
     void destroy();
+
+    /** 画像の幅(px)を返す(Tcl"image width"相当。本家ではPhotoImage/BitmapImage共通のImage基底が持つ)。 */
+    int width() const;
+
+    /** 画像の高さ(px)を返す(Tcl"image height"相当)。 */
+    int height() const;
 
 protected:
     Interpreter* interp() const override { return interp_; }
@@ -665,6 +699,45 @@ public:
     /** バインドタグの並びを設定する(Python Misc.bindtags(tagList)相当)。 */
     Widget& bindtags(const std::vector<std::string>& tags);
 
+    /** 現在グラブ中のウィジェットのフルネームを返す(無ければ空文字列、Python Misc.grab_current()相当)。 */
+    std::string grab_current() const;
+
+    /** グラブの状態("none"/"local"/"global")を返す(Python Misc.grab_status()相当)。 */
+    std::string grab_status() const;
+
+    /** ウィンドウシステム固有のID(16進文字列)を返す(Python Misc.winfo_id()相当)。 */
+    std::string winfo_id() const;
+
+    /** ウィジェット名(フルパスの末尾要素)を返す(Python Misc.winfo_name()相当)。 */
+    std::string winfo_name() const;
+
+    /** 親ウィジェットのフルネームを返す(トップレベルの場合は空文字列、Python Misc.winfo_parent()相当)。 */
+    std::string winfo_parent() const;
+
+    /** 色深度(bit)を返す(Python Misc.winfo_depth()相当)。 */
+    int winfo_depth() const;
+
+    /** "widthxheight+x+y"形式の現在のジオメトリ文字列を返す(Python Misc.winfo_geometry()相当)。 */
+    std::string winfo_geometry() const;
+
+    /** ルート座標(root_x, root_y)に存在するウィジェットのフルネームを返す(無ければ空文字列、Python Misc.winfo_containing()相当)。 */
+    std::string winfo_containing(int root_x, int root_y) const;
+
+    /** Tkオプションデータベースにパターン→値を登録する(Python Misc.option_add()相当)。 */
+    void option_add(const std::string& pattern, const std::string& value, const std::string& priority = "");
+
+    /** オプションデータベースから値を取得する(Python Misc.option_get()相当)。該当が無ければ空文字列。 */
+    std::string option_get(const std::string& name, const std::string& class_name) const;
+
+    /**
+     * フォーカス移動順(Tab順)で次のウィジェットを返す(フォーカス自体は移動しない、Python Misc.tk_focusNext()相当)。
+     * nametowidget()と同じ簡略版のため、具体的な派生型ではなくWidgetとして返る。
+     */
+    Widget tk_focusNext() const;
+
+    /** フォーカス移動順(Tab順)で前のウィジェットを返す(Python Misc.tk_focusPrev()相当)。 */
+    Widget tk_focusPrev() const;
+
 protected:
 
     struct Impl
@@ -769,6 +842,12 @@ public:
 
     Tk& iconbitmap(const std::string& bitmap_path);
 
+    /** 最小化時に表示されるアイコンラベルを設定する(Python Tk.wm_iconname()相当)。 */
+    Tk& iconname(const std::string& name);
+
+    /** 現在のアイコンラベルを返す。 */
+    std::string iconname() const;
+
     void mainloop();
 
     void quit();
@@ -848,6 +927,12 @@ public:
     Toplevel& iconphoto(const std::string& image_name);
 
     Toplevel& iconbitmap(const std::string& bitmap_path);
+
+    /** 最小化時に表示されるアイコンラベルを設定する(Python Toplevel.wm_iconname()相当)。 */
+    Toplevel& iconname(const std::string& name);
+
+    /** 現在のアイコンラベルを返す。 */
+    std::string iconname() const;
 
     /** このウィンドウをmasterに対して一時的な(モーダルダイアログ等の)ウィンドウとして関連付ける。 */
     Toplevel& transient(const Widget& master);
@@ -970,6 +1055,12 @@ public:
 
     Canvas& height(const int &height);
 
+    /**
+     * 描画内容をPostScript形式で書き出す(Python Canvas.postscript()相当)。"file"オプションを指定しなければ
+     * 生成したPostScriptデータを文字列で返す(指定した場合はファイルへ書き出し、戻り値は空文字列)。
+     */
+    std::string postscript(const std::map<std::string, ArgValue>& options = {});
+
 };
 
 class Checkbutton : public Widget
@@ -1024,6 +1115,12 @@ public:
     Entry& erase(const std::string& start, const std::string& end = "");
 
     std::string get() const;
+
+    /** 横スクロールバーとの連携コールバックを設定する(Python Entry(xscrollcommand=...)相当)。 */
+    Entry& xscrollcommand(std::function<void(std::string)> callback);
+
+    /** 横スクロールを行う(Scrollbarの"command"にそのまま渡す想定、Python Entry.xview()相当)。 */
+    Entry& xview(const std::string& args);
 
     /** start〜endの範囲を選択状態にする(Python Entry.select_range()相当)。 */
     Entry& select_range(const std::string& start, const std::string& end);
@@ -1093,6 +1190,15 @@ public:
 
     Listbox& yscrollcommand(std::function<void(std::string)> callback);
 
+    /** 縦スクロールを行う(Scrollbarの"command"にそのまま渡す想定、Python Listbox.yview()相当)。 */
+    Listbox& yview(const std::string& args);
+
+    /** 横スクロールバーとの連携コールバックを設定する(Python Listbox(xscrollcommand=...)相当)。 */
+    Listbox& xscrollcommand(std::function<void(std::string)> callback);
+
+    /** 横スクロールを行う(Python Listbox.xview()相当)。 */
+    Listbox& xview(const std::string& args);
+
     Listbox& selectmode(const std::string& mode);
 
     /** 指定indexが見えるようスクロールする。 */
@@ -1126,21 +1232,34 @@ public:
 
     explicit Menu(const Widget& parent, const std::map<std::string, ArgValue>& options = {}); 
     
-    Menu& add_command(const std::map<std::string, ArgValue>& options);
+    /**
+     * callbackを指定すると、クリック時に呼ばれるコールバックを"-command"として自動登録する
+     * (Python Menu.add_command(command=callback)相当)。省略時(既定のnullptr)は本家Python同様
+     * commandオプション無しの項目になる。
+     */
+    Menu& add_command(const std::map<std::string, ArgValue>& options, std::function<void()> callback = nullptr);
 
     Menu& add_cascade(const std::map<std::string, ArgValue>& options);
 
     Menu& add_separator();
 
-    Menu& add_checkbutton(const std::map<std::string, ArgValue>& options);
+    /** callbackはON/OFF切り替え時に呼ばれる(Python Menu.add_checkbutton(command=callback)相当)。 */
+    Menu& add_checkbutton(const std::map<std::string, ArgValue>& options, std::function<void()> callback = nullptr);
 
-    Menu& add_radiobutton(const std::map<std::string, ArgValue>& options);
+    /** callbackは選択時に呼ばれる(Python Menu.add_radiobutton(command=callback)相当)。 */
+    Menu& add_radiobutton(const std::map<std::string, ArgValue>& options, std::function<void()> callback = nullptr);
 
-    /** item_typeは"command"/"cascade"/"checkbutton"/"radiobutton"/"separator"のいずれか(Tclの"menu insert"にそのまま対応)。 */
-    Menu& insert(const std::string& index, const std::string& item_type, const std::map<std::string, ArgValue>& options = {});
+    /**
+     * item_typeは"command"/"cascade"/"checkbutton"/"radiobutton"/"separator"のいずれか(Tclの"menu insert"にそのまま対応)。
+     * callbackはcommand/checkbutton/radiobutton型の場合のみ意味を持つ(cascade/separatorに指定するとTclがエラーになる)。
+     */
+    Menu& insert(const std::string& index, const std::string& item_type, const std::map<std::string, ArgValue>& options = {}, std::function<void()> callback = nullptr);
 
-    /** 指定indexの項目の設定を変更する(Python Menu.entryconfigure()相当)。 */
-    Menu& entryconfigure(const std::string& index, const std::map<std::string, ArgValue>& options);
+    /**
+     * 指定indexの項目の設定を変更する(Python Menu.entryconfigure()相当)。
+     * callbackを指定すると、その項目の"-command"を差し替える。
+     */
+    Menu& entryconfigure(const std::string& index, const std::map<std::string, ArgValue>& options, std::function<void()> callback = nullptr);
 
     /** patternに一致する項目の数値indexを返す。一致が無ければ-1(Python Menu.index()相当)。 */
     int index(const std::string& pattern) const;
@@ -1342,6 +1461,15 @@ public:
 
     Text& yview(const std::string& args);
 
+    /** 横スクロールバーとの連携コールバックを設定する(Python Text(xscrollcommand=...)相当)。 */
+    Text& xscrollcommand(std::function<void(std::string)> callback);
+
+    /** 横スクロールを行う(Scrollbarの"command"にそのまま渡す想定、Python Text.xview()相当)。 */
+    Text& xview(const std::string& args);
+
+    /** indexの位置の外接矩形("x y width height")を返す。indexが不可視なら空(Python Text.bbox()相当)。 */
+    std::vector<int> bbox(const std::string& index) const;
+
     Text& wrap(const std::string& mode);
 
     Text& tag_add(const std::string& tag, const std::string& start, const std::string& end); 
@@ -1448,6 +1576,9 @@ public:
     /** Python tkinter.font.Font.measure(text)相当。textの描画幅(px)を返す。 */
     int measure(const std::string& text) const;
 
+    /** 現在の設定を丸ごと引き継いだ複製を新規Fontとして作成して返す(Python tkinter.font.Font.copy()相当)。 */
+    Font copy() const;
+
     const std::string& name() const;
 
 protected:
@@ -1471,6 +1602,12 @@ private:
  * 本家のrootはNone許容(暗黙のデフォルトルート)だが、cpp_tkはそれを持たないため必須引数にする。
  */
 Font nametofont(const Widget& parent, const std::string& name);
+
+/** 利用可能なフォントファミリ名一覧を返す(Python tkinter.font.families()相当)。 */
+std::vector<std::string> families();
+
+/** 現在定義されている名前付きフォント名一覧を返す(Python tkinter.font.names()相当)。 */
+std::vector<std::string> names();
 
 } // font
 
@@ -1512,6 +1649,30 @@ public:
 
     /** 現在有効なテーマ名を返す。 */
     std::string theme_use() const;
+
+    /** 指定style(またはelement)の現在のレイアウト仕様を返す(Tclのネストしたリスト形式そのまま、Python Style.layout()の引数無し版相当)。 */
+    std::string layout(const std::string& style_name) const;
+
+    /**
+     * 指定style(またはelement)のレイアウト仕様を設定する(Python Style.layout(style, layoutspec)相当)。
+     * layout_specは"{Checkbutton.padding sticky nswe children {...}}"のようなネストしたTclリスト形式の
+     * 文字列をそのまま渡す(薄いラッパーのため、ネスト構造の組み立てはユーザー側に委ねる)。
+     */
+    Style& layout(const std::string& style_name, const std::string& layout_spec);
+
+    /**
+     * 新しいスタイル要素を定義する(Python Style.element_create()相当)。argsはelement type("image"/"from"等)
+     * 固有の追加引数をそのまま並べる(例: element_create("Custom.button", "image", {image_name, "-border", 2})相当)。
+     */
+    Style& element_create(const std::string& name, const std::string& type, const std::vector<ArgValue>& args = {});
+
+    /**
+     * 新しいテーマを定義する(Python Style.theme_create()相当)。parentは継承元テーマ名(省略可)、
+     * settings_scriptは"ttk::style theme create name -settings { script }"の中括弧内に相当する生Tclスクリプト
+     * 文字列で、要素定義・configure/map呼び出しをまとめて指定する(高度なテーマカスタマイズ向けの薄いラッパーの
+     * ため、スクリプト自体の組み立てはユーザーに委ねる)。
+     */
+    Style& theme_create(const std::string& name, const std::string& parent = "", const std::string& settings_script = "");
 
 protected:
 
@@ -1636,6 +1797,12 @@ public:
     std::string get() const;
 
     Entry& font(const font::Font& font);
+
+    /** 横スクロールバーとの連携コールバックを設定する(Python Entry(xscrollcommand=...)相当)。 */
+    Entry& xscrollcommand(std::function<void(std::string)> callback);
+
+    /** 横スクロールを行う(Scrollbarの"command"にそのまま渡す想定、Python Entry.xview()相当)。 */
+    Entry& xview(const std::string& args);
 
     /** start〜endの範囲を選択状態にする(Python Entry.select_range()相当)。 */
     Entry& select_range(const std::string& start, const std::string& end);
@@ -1917,7 +2084,11 @@ public:
 
     Treeview& item(const std::string& iid, const std::map<std::string, ArgValue>& options = {});
     
-    Treeview& heading(const std::string& column, const std::map<std::string, ArgValue>& options = {});
+    /**
+     * callbackを指定すると、列ヘッダクリック時に呼ばれるコールバックを"-command"として自動登録する
+     * (Python Treeview.heading(column, command=callback)相当。「ヘッダクリックでソート」の定番パターン用)。
+     */
+    Treeview& heading(const std::string& column, const std::map<std::string, ArgValue>& options = {}, std::function<void()> callback = nullptr);
 
     Treeview& column(const std::string& column, const std::map<std::string, ArgValue>& options = {});
 

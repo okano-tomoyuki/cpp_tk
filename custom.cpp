@@ -86,5 +86,125 @@ ttk::Label& LabeledScale::label()
     return label_;
 }
 
+namespace simpledialog
+{
+
+std::string askstring(const Widget& parent, const std::string& title, const std::string& prompt,
+                       const std::string& initial_value, bool* cancelled)
+{
+    Toplevel dialog(parent);
+    dialog.title(title);
+    dialog.transient(parent);
+    dialog.resizable(false, false);
+
+    Label label(dialog);
+    label.text(prompt);
+    label.pack({{"padx", 10}, {"pady", 10}});
+
+    // StringVarはWidgetと異なりコピー禁止ではない(Tcl変数名を指すだけの軽量な値)ため、
+    // handle()経由の再構築を使わずコールバックへそのまま値渡しできる。
+    StringVar value(dialog);
+    value.set(initial_value);
+
+    Entry entry(dialog);
+    entry.textvariable(value);
+    entry.pack({{"padx", 10}, {"pady", 5}, {"fill", "x"}});
+    entry.focus_set();
+
+    auto ok_flag = std::make_shared<bool>(false);
+
+    Frame button_row(dialog);
+    button_row.pack({{"pady", 10}});
+
+    // [this]や生ポインタの直接キャプチャはmove後にダングリングするため、handle()経由で
+    // 再構築してから使う(Widget::handle()のコメント、docs/tasks.md B節参照)。
+    auto dialog_handle = dialog.handle();
+
+    Button ok_button(button_row);
+    ok_button.text("OK");
+    ok_button.command([dialog_handle, ok_flag]() {
+        *ok_flag = true;
+        Toplevel(dialog_handle).destroy();
+    });
+    ok_button.pack({{"side", "left"}, {"padx", 5}});
+
+    Button cancel_button(button_row);
+    cancel_button.text("Cancel");
+    cancel_button.command([dialog_handle]() {
+        Toplevel(dialog_handle).destroy();
+    });
+    cancel_button.pack({{"side", "left"}, {"padx", 5}});
+
+    // 本家tkinter.simpledialogと同様にReturn/Escapeキーでも確定/キャンセルできるようにする。
+    entry.bind("<Return>", [dialog_handle, ok_flag](const Event&) {
+        *ok_flag = true;
+        Toplevel(dialog_handle).destroy();
+    });
+    dialog.bind("<Escape>", [dialog_handle](const Event&) {
+        Toplevel(dialog_handle).destroy();
+    });
+
+    dialog.protocol("WM_DELETE_WINDOW", [dialog_handle]() {
+        Toplevel(dialog_handle).destroy();
+    });
+
+    dialog.grab_set();
+    dialog.wait_window();
+
+    if (cancelled) *cancelled = !*ok_flag;
+    if (!*ok_flag) return "";
+    return value.get();
+}
+
+int askinteger(const Widget& parent, const std::string& title, const std::string& prompt,
+               int initial_value, bool* cancelled)
+{
+    bool dialog_cancelled = false;
+    auto text = askstring(parent, title, prompt, std::to_string(initial_value), &dialog_cancelled);
+    if (dialog_cancelled)
+    {
+        if (cancelled) *cancelled = true;
+        return 0;
+    }
+    try
+    {
+        int value = std::stoi(text);
+        if (cancelled) *cancelled = false;
+        return value;
+    }
+    catch (...)
+    {
+        // 数値として解釈できない入力はキャンセル扱いにする(本家は再入力を促すが、
+        // cpp_tkの簡略版ではその場でのバリデーションループまでは実装しない)。
+        if (cancelled) *cancelled = true;
+        return 0;
+    }
+}
+
+double askfloat(const Widget& parent, const std::string& title, const std::string& prompt,
+                 double initial_value, bool* cancelled)
+{
+    bool dialog_cancelled = false;
+    auto text = askstring(parent, title, prompt, std::to_string(initial_value), &dialog_cancelled);
+    if (dialog_cancelled)
+    {
+        if (cancelled) *cancelled = true;
+        return 0.0;
+    }
+    try
+    {
+        double value = std::stod(text);
+        if (cancelled) *cancelled = false;
+        return value;
+    }
+    catch (...)
+    {
+        if (cancelled) *cancelled = true;
+        return 0.0;
+    }
+}
+
+} // simpledialog
+
 } // custom
 } // cpp_tk

@@ -67,6 +67,36 @@ private:
     ttk::Label label_;
 };
 
+/**
+ * Python tkinter.simpledialogに相当する、Entryを1つ持つ簡易モーダル入力ダイアログ群。
+ * 本家simpledialogもTclネイティブなダイアログコマンドではなくToplevel+Label+Entry+Button
+ * を組み立てるPure Python実装であるため、cpp_tkでもScrolledText等と同様にcustom名前空間に置く。
+ */
+namespace simpledialog
+{
+
+/**
+ * 文字列入力を求めるモーダルダイアログを表示し、OK時の入力値を返す(Python simpledialog.askstring()相当)。
+ * 本家はキャンセル時にNoneを返すが、cpp_tkはoptional相当を持たないため、cancelledが非nullptrなら
+ * そこへキャンセル有無を書き込む(キャンセル時の戻り値は空文字列)。
+ */
+std::string askstring(const Widget& parent, const std::string& title, const std::string& prompt,
+                       const std::string& initial_value = "", bool* cancelled = nullptr);
+
+/**
+ * 整数入力を求めるモーダルダイアログ(Python simpledialog.askinteger()相当)。askstring()の上に
+ * 構築した簡略版のため、数値として解釈できない入力は本家のような再入力プロンプトは出さず、
+ * キャンセル扱いにする。
+ */
+int askinteger(const Widget& parent, const std::string& title, const std::string& prompt,
+               int initial_value = 0, bool* cancelled = nullptr);
+
+/** 浮動小数点入力を求めるモーダルダイアログ(Python simpledialog.askfloat()相当)。askinteger()と同じ簡略化。 */
+double askfloat(const Widget& parent, const std::string& title, const std::string& prompt,
+                double initial_value = 0.0, bool* cancelled = nullptr);
+
+} // simpledialog
+
 } // custom
 } // cpp_tk
 
