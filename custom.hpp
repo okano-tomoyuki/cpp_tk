@@ -68,6 +68,38 @@ private:
 };
 
 /**
+ * 月表示のカレンダーWidget(Python tkcalendarパッケージのCalendar相当のMVP版)。年/月/日は
+ * intで表現し、外部の日付ライブラリには依存しない(内部の日数/曜日計算は<ctime>の
+ * std::mktime()を利用する)。v1スコープは月移動・日付選択・get_date()のみで、mindate/maxdate
+ * 制限やイベント表示・年選択は今後の課題とする(docs/tasks.md G節参照)。
+ */
+class Calendar : public Widget
+{
+public:
+    using Widget::Widget; // コールバック内でhandle()から安全に再構築するために継承する(docs/tasks.md C節8.参照)
+
+    Calendar() = default;
+
+    /** year/month/dayを省略(いずれか0のまま)すると本日の日付で初期化する。 */
+    explicit Calendar(const Widget& parent, int year = 0, int month = 0, int day = 0);
+
+    /** 現在選択されている日付を取得する。 */
+    void get_date(int& year, int& month, int& day) const;
+
+    /** 選択日を変更する(表示月も選択日の月に合わせて切り替わる)。 */
+    Calendar& set_date(int year, int month, int day);
+
+    /** 日付選択時に呼ばれるコールバック(選択されたyear/month/dayを引数で受け取る)。 */
+    Calendar& command(std::function<void(int, int, int)> callback);
+
+    // 内部実装用(custom.cpp内のヘルパー関数から参照するためpublicだが、直接使用しない)。
+    struct Model;
+
+private:
+    std::shared_ptr<Model> model_;
+};
+
+/**
  * Python tkinter.simpledialogに相当する、Entryを1つ持つ簡易モーダル入力ダイアログ群。
  * 本家simpledialogもTclネイティブなダイアログコマンドではなくToplevel+Label+Entry+Button
  * を組み立てるPure Python実装であるため、cpp_tkでもScrolledText等と同様にcustom名前空間に置く。

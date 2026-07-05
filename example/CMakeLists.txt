@@ -8,6 +8,7 @@ foreach(src_name
     # photo_image
     tree_view
     multithread_text
+    calendar_demo
 )
     add_executable(${src_name}
         ${src_name}.cpp

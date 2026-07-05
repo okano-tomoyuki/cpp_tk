@@ -2,6 +2,7 @@
 #include "thirdparty/sv_ttk/sv_ttk_data.hpp"
 
 #include <cstdlib>
+#include <ctime>
 
 // custom.cppはcpp_tk.hppの公開APIだけを使って実装できる(Tcl_Interp*等のTcl/Tk内部には
 // 一切触れない)。これはcore(cpp_tk.hpp/cpp_tk.cpp)が提供する薄いラッパーの上に、
@@ -11,6 +12,184 @@ namespace cpp_tk
 {
 namespace custom
 {
+
+// Calendarの日数/曜日計算はstd::mktime()に正規化させることで、閏年等のカレンダー演算を
+// 自前で書かずに標準ライブラリへ委譲する(<ctime>のみでの実装、外部日付ライブラリ不要)。
+namespace
+{
+
+int days_in_month(int year, int month)
+{
+    std::tm t = {};
+    t.tm_year = year - 1900;
+    t.tm_mon  = month; // 0始まりのtm_monに対し次月を指定し、day=0で「今月の最終日」に正規化させる
+    t.tm_mday = 0;
+    std::mktime(&t);
+    return t.tm_mday;
+}
+
+int day_of_week(int year, int month, int day) // 0=日曜
+{
+    std::tm t = {};
+    t.tm_year = year - 1900;
+    t.tm_mon  = month - 1;
+    t.tm_mday = day;
+    t.tm_hour = 12; // 夏時間境界の影響を避けるため正午にしておく
+    std::mktime(&t);
+    return t.tm_wday;
+}
+
+const char* month_name(int month)
+{
+    static const char* names[] = {
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    };
+    return names[month - 1];
+}
+
+} // namespace
+
+struct Calendar::Model
+{
+    int display_year  = 0;
+    int display_month = 0; // 1-12
+    int selected_year  = 0;
+    int selected_month = 0;
+    int selected_day   = 0;
+
+    Label header;
+    Frame grid;
+    std::vector<Label> cells; // 表示月替わりのたびに作り直す(MVPとして単純さを優先)
+    std::function<void(int, int, int)> on_select;
+};
+
+namespace
+{
+
+void rebuild_calendar_grid(const std::shared_ptr<Calendar::Model>& model);
+
+void select_calendar_day(const std::shared_ptr<Calendar::Model>& model, int day)
+{
+    model->selected_year  = model->display_year;
+    model->selected_month = model->display_month;
+    model->selected_day   = day;
+    rebuild_calendar_grid(model); // 選択ハイライトを反映する
+
+    if (model->on_select)
+        model->on_select(model->selected_year, model->selected_month, model->selected_day);
+}
+
+void go_calendar_month(const std::shared_ptr<Calendar::Model>& model, int delta)
+{
+    model->display_month += delta;
+    if (model->display_month < 1)  { model->display_month = 12; --model->display_year; }
+    if (model->display_month > 12) { model->display_month = 1;  ++model->display_year; }
+    rebuild_calendar_grid(model);
+}
+
+void rebuild_calendar_grid(const std::shared_ptr<Calendar::Model>& model)
+{
+    for (auto& cell : model->cells) cell.destroy();
+    model->cells.clear();
+
+    model->header.text(std::string(month_name(model->display_month)) + " " + std::to_string(model->display_year));
+
+    int first_wday  = day_of_week(model->display_year, model->display_month, 1);
+    int total_days  = days_in_month(model->display_year, model->display_month);
+
+    int row = 0;
+    int col = first_wday;
+    for (int d = 1; d <= total_days; ++d)
+    {
+        bool is_selected = (model->display_year  == model->selected_year &&
+                             model->display_month == model->selected_month &&
+                             d == model->selected_day);
+
+        Label cell(as_parent(model->grid), {{"text", std::to_string(d)}, {"width", 3}});
+        if (is_selected)
+            cell.config({{"background", "#2f60d8"}, {"foreground", "#ffffff"}});
+        cell.grid({{"row", row}, {"column", col}, {"padx", 1}, {"pady", 1}});
+
+        cell.bind("<Button-1>", [model, d](const Event&) { select_calendar_day(model, d); });
+
+        model->cells.push_back(std::move(cell));
+        if (++col > 6) { col = 0; ++row; }
+    }
+}
+
+} // namespace
+
+Calendar::Calendar(const Widget& parent, int year, int month, int day)
+    : Widget(parent, "frame", "calendar")
+    , model_(std::make_shared<Model>())
+{
+    if (year == 0 || month == 0 || day == 0)
+    {
+        std::time_t now = std::time(nullptr);
+        std::tm* lt = std::localtime(&now);
+        year  = lt->tm_year + 1900;
+        month = lt->tm_mon + 1;
+        day   = lt->tm_mday;
+    }
+
+    model_->display_year   = year;
+    model_->display_month  = month;
+    model_->selected_year   = year;
+    model_->selected_month  = month;
+    model_->selected_day    = day;
+
+    Frame header_row(*this);
+    header_row.grid({{"row", 0}, {"column", 0}, {"columnspan", 7}, {"sticky", "ew"}});
+
+    Button prev(header_row, {{"text", "<"}});
+    prev.grid({{"row", 0}, {"column", 0}});
+    model_->header = Label(header_row, {{"anchor", "center"}});
+    model_->header.grid({{"row", 0}, {"column", 1}});
+    header_row.grid_columnconfigure(1, {{"weight", 1}});
+    Button next(header_row, {{"text", ">"}});
+    next.grid({{"row", 0}, {"column", 2}});
+
+    auto model_for_callbacks = model_;
+    prev.command([model_for_callbacks]() { go_calendar_month(model_for_callbacks, -1); });
+    next.command([model_for_callbacks]() { go_calendar_month(model_for_callbacks, 1); });
+
+    static const char* weekday_labels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+    for (int i = 0; i < 7; ++i)
+    {
+        Label wd(*this, {{"text", weekday_labels[i]}, {"width", 3}});
+        wd.grid({{"row", 1}, {"column", i}});
+    }
+
+    model_->grid = Frame(*this);
+    model_->grid.grid({{"row", 2}, {"column", 0}, {"columnspan", 7}});
+
+    rebuild_calendar_grid(model_);
+}
+
+void Calendar::get_date(int& year, int& month, int& day) const
+{
+    year  = model_->selected_year;
+    month = model_->selected_month;
+    day   = model_->selected_day;
+}
+
+Calendar& Calendar::set_date(int year, int month, int day)
+{
+    model_->display_year   = year;
+    model_->display_month  = month;
+    model_->selected_year   = year;
+    model_->selected_month  = month;
+    model_->selected_day    = day;
+    rebuild_calendar_grid(model_);
+    return *this;
+}
+
+Calendar& Calendar::command(std::function<void(int, int, int)> callback)
+{
+    model_->on_select = std::move(callback);
+    return *this;
+}
 
 ScrolledText::ScrolledText(const Widget& parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "frame", "scrolledtext")

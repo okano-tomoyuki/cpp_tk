@@ -18,6 +18,7 @@ foreach(test_name
     test_structural_fixes
     test_uninitialized_objects
     test_sv_ttk_theme
+    test_calendar
 )
     add_executable(${test_name}
         ${test_name}.cpp
