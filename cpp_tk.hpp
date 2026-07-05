@@ -176,14 +176,35 @@ public:
 };
 
 /**
- * InterpreterClient::call()/checked_interp()が、呼び出し側にbool* successを渡されなかった場合の挙動。
- * どちらのポリシーでもstderrへのログ出力自体は必ず行われる(診断性は維持する)。
+ * InterpreterClient::call()/checked_interp()が、呼び出し側にbool* successを渡されなかった場合の挙動を
+ * カテゴリ別に指定するビットフラグ。STRICT(0)は「対応するビットが立っていない全カテゴリで
+ * Errorを送出する」既定値。特定カテゴリのビットを立てると、そのカテゴリだけ「ログのみで
+ * 空文字列/false/no-opとして継続する(例外を投げない)」に切り替わる。どのカテゴリ・ポリシーでも
+ * stderrへのログ出力自体は必ず行われる(診断性は維持する)。複数カテゴリを組み合わせる場合は
+ * operator|で連結する(例: LENIENT_CALL | LENIENT_THREAD)。
  */
-enum class ErrorPolicy
+enum class ErrorPolicy : unsigned
 {
-    STRICT,  // 既定。Errorを送出する(開発時向け)。
-    LENIENT, // 例外を投げず、ログのみで空文字列/false/no-opとして継続する(Release向け)。
+    STRICT         = 0,        // 既定。全カテゴリでErrorを送出する。
+    LENIENT_CALL   = 1u << 0,  // Tcl呼び出し失敗・未初期化オブジェクトへのアクセス
+    LENIENT_THREAD = 1u << 1,  // Interpreterの所有スレッドと異なるスレッドからのアクセス
 };
+
+constexpr ErrorPolicy operator|(ErrorPolicy a, ErrorPolicy b)
+{
+    return static_cast<ErrorPolicy>(static_cast<unsigned>(a) | static_cast<unsigned>(b));
+}
+
+constexpr ErrorPolicy operator&(ErrorPolicy a, ErrorPolicy b)
+{
+    return static_cast<ErrorPolicy>(static_cast<unsigned>(a) & static_cast<unsigned>(b));
+}
+
+/** policyにcategoryのビットが(いずれか一つでも)含まれているかを返す。 */
+constexpr bool has_error_policy(ErrorPolicy policy, ErrorPolicy category)
+{
+    return static_cast<unsigned>(policy & category) != 0;
+}
 
 /** 現在のErrorPolicyを設定する(既定はSTRICT)。 */
 void set_error_policy(ErrorPolicy policy);

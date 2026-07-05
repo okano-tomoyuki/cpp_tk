@@ -115,8 +115,9 @@ ErrorPolicy error_policy()
 }
 
 // checked_interp()/call()共通の失敗時挙動。ログ出力は常に行い、successが渡されていれば
-// (呼び出し元でok判定する前提なので)例外は投げない。successがnullptrならerror_policy()に従う。
-static void report_or_throw(const std::string& message, bool* success)
+// (呼び出し元でok判定する前提なので)例外は投げない。successがnullptrなら、categoryに対応する
+// ビットがerror_policy()に含まれているかで判定する(含まれていなければStrict扱いでErrorを送出)。
+static void report_or_throw(const std::string& message, bool* success, ErrorPolicy category)
 {
     std::cerr << "cpp_tk Error: " << message << std::endl;
     if (success)
@@ -124,7 +125,7 @@ static void report_or_throw(const std::string& message, bool* success)
         *success = false;
         return;
     }
-    if (error_policy() == ErrorPolicy::STRICT)
+    if (!has_error_policy(error_policy(), category))
         throw Error(message);
 }
 
@@ -594,19 +595,20 @@ Interpreter* InterpreterClient::checked_interp(const char* operation, bool* succ
     auto* p = interp();
     if (p == nullptr)
     {
-        report_or_throw(std::string(operation) + "() called on an uninitialized " + type_name() + " (interp == nullptr).", success);
-        return p;
+        report_or_throw(std::string(operation) + "() called on an uninitialized " + type_name() + " (interp == nullptr).", success, ErrorPolicy::LENIENT_CALL);
+        return nullptr;
     }
 
-    // Tcl_Interpは生成したスレッド以外から触ると内部状態を破壊しうる未定義動作になるため、
-    // successの有無やerror_policy()(STRICT/LENIENT)に関わらず常にErrorを送出する。
+    // Tcl_Interpは生成したスレッド以外から触ると内部状態を破壊しうる未定義動作になりうるが、
+    // この検知自体はTcl_Interpに一切触れる前に働くため、Error送出/ログのみ継続のどちらを
+    // 選んでも「危険なTcl呼び出しをしない」という安全性は同じ(呼び出し元への通知方法が
+    // 違うだけ)。そのためLENIENT_THREADで他のカテゴリと同様に緩められるようにする。
     if (p->owner_thread() != std::this_thread::get_id())
     {
-        std::string message = std::string(operation) + "() called on a " + type_name()
+        report_or_throw(std::string(operation) + "() called on a " + type_name()
             + " from a thread different than the one that owns its Tcl interpreter. "
-              "Tcl_Interp must only be accessed from the thread that created it.";
-        std::cerr << "cpp_tk Error: " << message << std::endl;
-        throw Error(message);
+              "Tcl_Interp must only be accessed from the thread that created it.", success, ErrorPolicy::LENIENT_THREAD);
+        return nullptr;
     }
 
     return p;
@@ -622,7 +624,7 @@ std::string InterpreterClient::call(const std::vector<ArgValue>& words, bool* su
     auto result = p->call(words, &ok);
     if (!ok)
     {
-        report_or_throw("call() failed to execute Tcl command: " + result, success);
+        report_or_throw("call() failed to execute Tcl command: " + result, success, ErrorPolicy::LENIENT_CALL);
         return result;
     }
     if (success) *success = true;
@@ -637,7 +639,7 @@ void InterpreterClient::post(std::function<void()> job) const
     auto* p = interp();
     if (p == nullptr)
     {
-        report_or_throw(std::string("post() called on an uninitialized ") + type_name() + " (interp == nullptr).", nullptr);
+        report_or_throw(std::string("post() called on an uninitialized ") + type_name() + " (interp == nullptr).", nullptr, ErrorPolicy::LENIENT_CALL);
         return;
     }
     p->post(std::move(job));
