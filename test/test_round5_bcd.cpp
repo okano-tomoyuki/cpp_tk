@@ -180,6 +180,11 @@ TEST_CASE("Canvas::postscript: PostScriptデータを文字列で返す")
 TEST_CASE("Widget: grab_current/grab_statusが機能する")
 {
     tk::Tk root;
+    // 先行するTEST_CASEが既にmapped状態にしている可能性があり、その場合deiconify()単体では
+    // 状態変化(Visibilityイベント)が発生せずwait_visibility()がハングする。withdraw()で
+    // 一旦確実にunmapしてからdeiconify()することで、必ず変化を起こす。
+    root.withdraw();
+    root.deiconify();
     root.geometry("50x50-3000-3000");
     root.wait_visibility();
 
@@ -194,6 +199,11 @@ TEST_CASE("Widget: grab_current/grab_statusが機能する")
 TEST_CASE("Widget: winfo_id/name/parent/depth/geometryが機能する")
 {
     tk::Tk root;
+    // 先行するTEST_CASEが既にmapped状態にしている可能性があり、その場合deiconify()単体では
+    // 状態変化(Visibilityイベント)が発生せずwait_visibility()がハングする。withdraw()で
+    // 一旦確実にunmapしてからdeiconify()することで、必ず変化を起こす。
+    root.withdraw();
+    root.deiconify();
     root.geometry("50x50-3000-3000");
     root.wait_visibility();
 

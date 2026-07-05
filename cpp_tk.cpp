@@ -103,15 +103,6 @@ namespace cpp_tk
 
 std::unordered_map<std::thread::id, Interpreter*> interp_map;
 
-// Var/PhotoImage/font::Font/ttk::Styleは、Widgetとは別に自分専用のInterpreter*を持つ。
-// 現在のスレッドに紐づくInterpreterは常にひとつだけなので、Widget(親)の内部を覗く
-// (friend等)必要はなく、interp_mapをこのスレッドのIDで直接引けば同じ答えが得られる。
-Interpreter* current_interp()
-{
-    auto it = interp_map.find(std::this_thread::get_id());
-    return it != interp_map.end() ? it->second : nullptr;
-}
-
 static ErrorPolicy g_error_policy = ErrorPolicy::DEFAULT;
 
 void set_error_policy(ErrorPolicy policy)
@@ -445,6 +436,20 @@ private:
     std::unordered_map<std::string, std::function<void(const std::string&)>>    string_callback_map_;
 };
 
+// Interpreterはスレッドごとにちょうど1つだけ存在する遅延生成のシングルトン。
+// 呼び出しスレッドに紐づくInterpreterが無ければこの場で生成して登録するため、
+// current_interp()は常に有効なポインタを返す(nullptrにはならない)。tk::Tkの構築を
+// 待たずにVar/PhotoImage/font::Font/ttk::Styleを構築しても、その場でInterpreterが
+// 用意される。同一スレッドでtk::Tkを複数回構築しても、この関数が返す既存の
+// Interpreterを再利用するだけなので上書き・迷子になったInterpreterは発生しない。
+Interpreter* current_interp()
+{
+    Interpreter*& interp = interp_map[std::this_thread::get_id()];
+    if (!interp)
+        interp = new Interpreter();
+    return interp;
+}
+
 ArgValue::ArgValue()
     : type_(ValueType::NONE)
     , str_(nullptr)
@@ -697,11 +702,8 @@ void Var::trace_var(std::function<void(const double&)> callback)
 StringVar::StringVar()
 {
     interp_ = current_interp();
-    if (interp_)
-    {
-        name_ = "string_var_" + id;
-        set_var("");
-    }
+    name_ = "string_var_" + id;
+    set_var("");
 }
 
 void StringVar::set(const std::string &value)
@@ -722,11 +724,8 @@ void StringVar::trace(std::function<void(const std::string&)> callback)
 BooleanVar::BooleanVar()
 {
     interp_ = current_interp();
-    if (interp_)
-    {
-        name_ = "bool_var_" + id;
-        set_var("0");
-    }
+    name_ = "bool_var_" + id;
+    set_var("0");
 }
 
 void BooleanVar::set(bool value)
@@ -749,11 +748,8 @@ void BooleanVar::trace(std::function<void(const bool&)> callback)
 IntVar::IntVar()
 {
     interp_ = current_interp();
-    if (interp_)
-    {
-        name_ = "int_var_" + id;
-        set_var("0");
-    }
+    name_ = "int_var_" + id;
+    set_var("0");
 }
 
 void IntVar::set(const int& value)
@@ -774,11 +770,8 @@ void IntVar::trace(std::function<void(const int&)> callback)
 DoubleVar::DoubleVar()
 {
     interp_ = current_interp();
-    if (interp_)
-    {
-        name_ = "double_var_" + id;
-        set_var("0.0");
-    }
+    name_ = "double_var_" + id;
+    set_var("0.0");
 }
 
 void DoubleVar::set(const double& value)
@@ -1390,9 +1383,6 @@ Widget Widget::tk_focusPrev() const
 PhotoImage::PhotoImage(const std::map<std::string, ArgValue>& options)
     : interp_(current_interp())
 {
-    if (!interp_)
-        return;
-
     name_ = "img_" + id;
     std::vector<ArgValue> words = {"image", "create", "photo", name_};
     for (const auto& kv : options)
@@ -1491,9 +1481,6 @@ int PhotoImage::height() const
 BitmapImage::BitmapImage(const std::map<std::string, ArgValue>& options)
     : interp_(current_interp())
 {
-    if (!interp_)
-        return;
-
     name_ = "bmp_" + id;
     std::vector<ArgValue> words = {"image", "create", "bitmap", name_};
     for (const auto& kv : options)
@@ -1526,8 +1513,7 @@ int BitmapImage::height() const
 
 std::vector<std::string> image_names()
 {
-    auto* interp = interp_map[std::this_thread::get_id()];
-    if (!interp) return {};
+    auto* interp = current_interp();
     bool ok = false;
     auto ret = interp->call({"image", "names"}, &ok);
     if (!ok) return {};
@@ -1536,8 +1522,7 @@ std::vector<std::string> image_names()
 
 std::vector<std::string> image_types()
 {
-    auto* interp = interp_map[std::this_thread::get_id()];
-    if (!interp) return {};
+    auto* interp = current_interp();
     bool ok = false;
     auto ret = interp->call({"image", "types"}, &ok);
     if (!ok) return {};
@@ -1547,8 +1532,7 @@ std::vector<std::string> image_types()
 Tk::Tk()
     : Widget()
 {
-    impl_->interp = new Interpreter();
-    interp_map[std::this_thread::get_id()] = impl_->interp;
+    impl_->interp = current_interp();
     impl_->full_name = ".";
 
     title("tk");
@@ -3163,9 +3147,6 @@ namespace font
 Font::Font(const std::map<std::string, ArgValue>& option, const std::string& name, bool exists)
     : interp_(current_interp())
 {
-    if (!interp_)
-        return;
-
     name_ = name.empty() ? ("font_" + id) : name;
     if (!exists)
     {
@@ -3252,8 +3233,7 @@ Font Font::copy() const
 
 std::vector<std::string> families()
 {
-    auto* interp = interp_map[std::this_thread::get_id()];
-    if (!interp) return {};
+    auto* interp = current_interp();
     bool ok = false;
     auto ret = interp->call({"font", "families"}, &ok);
     if (!ok) return {};
@@ -3262,8 +3242,7 @@ std::vector<std::string> families()
 
 std::vector<std::string> names()
 {
-    auto* interp = interp_map[std::this_thread::get_id()];
-    if (!interp) return {};
+    auto* interp = current_interp();
     bool ok = false;
     auto ret = interp->call({"font", "names"}, &ok);
     if (!ok) return {};

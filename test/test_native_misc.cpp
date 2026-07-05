@@ -29,6 +29,11 @@ TEST_CASE("bell: 例外にならない")
 TEST_CASE("wait_visibility: 戻った時点でmappedになっている")
 {
     tk::Tk root;
+    // 先行するTEST_CASEが既にmapped状態にしている可能性があり、その場合deiconify()単体では
+    // 状態変化(Visibilityイベント)が発生せずwait_visibility()がハングする。withdraw()で
+    // 一旦確実にunmapしてからdeiconify()することで、必ず変化を起こす。
+    root.withdraw();
+    root.deiconify();
     root.geometry("50x50-3000-3000"); // withdrawだとmappedにならないため画面外配置にする
 
     root.wait_visibility();

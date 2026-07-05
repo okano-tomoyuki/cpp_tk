@@ -342,12 +342,11 @@ class StringVar : public Var
 public:
 
     /**
-     * 呼び出しスレッドのcurrent interpreter(現在実行中のtk::Tk、current_interp()参照)が
-     * あればそれに束縛して実体を作り、無ければVar()同様の未初期化プレースホルダのままになる
+     * 呼び出しスレッドのcurrent interpreter(current_interp()参照)に束縛して実体を作る
      * (Python StringVar()相当。かつては`const Widget& parent`を取っていたが、実際には
      * parentを一切参照せずcurrent_interp()だけを使っていたため、実態に合わせて廃止した)。
-     * Tk構築前にメンバとして仮置きしたい場合は、Tk構築後に`var = StringVar();`のように
-     * 改めて構築し直して move代入すればよい(Widgetの`Widget()`→move代入と同じ流儀)。
+     * current_interp()はこのスレッドにInterpreterが無ければその場で生成するため、
+     * tk::Tkを構築するより前にStringVar()を構築しても未初期化状態にはならない。
      */
     StringVar();
 
@@ -363,7 +362,7 @@ class BooleanVar : public Var
 {
 public:
 
-    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛。無ければその場で生成される)。 */
     BooleanVar();
 
     void set(bool value);
@@ -379,7 +378,7 @@ class IntVar : public Var
 
 public:
 
-    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛。無ければその場で生成される)。 */
     IntVar();
 
     void set(const int& value);
@@ -395,7 +394,7 @@ class DoubleVar : public Var
 
 public:
 
-    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛。無ければその場で生成される)。 */
     DoubleVar();
 
     void set(const double& value);
@@ -410,9 +409,9 @@ class PhotoImage : public Object, public InterpreterClient
 {
 public:
     /**
-     * 呼び出しスレッドのcurrent interpreterがあればそれに束縛して実体を作り、無ければ
-     * 未初期化のプレースホルダのままになる(StringVar()と同じ理由・同じ流儀。かつては
-     * `const Widget& parent`を取っていたが、実際には参照していなかったため廃止した)。
+     * 呼び出しスレッドのcurrent interpreterに束縛して実体を作る(StringVar()と同じ理由・
+     * 同じ流儀。かつては`const Widget& parent`を取っていたが、実際には参照していなかった
+     * ため廃止した)。current_interp()はInterpreterが無ければその場で生成する。
      */
     explicit PhotoImage(const std::map<std::string, ArgValue>& options = {});
 
@@ -472,7 +471,7 @@ private:
 class BitmapImage : public Object, public InterpreterClient
 {
 public:
-    /** PhotoImage(options)と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    /** PhotoImage(options)と同じ理由・同じ流儀(current_interp()に束縛。無ければその場で生成される)。 */
     explicit BitmapImage(const std::map<std::string, ArgValue>& options = {});
 
     const std::string& name() const;
@@ -1559,8 +1558,8 @@ public:
      * name/existsはPython tkinter.font.Font(root=None, font=None, name=None, exists=False, **options)
      * に対応する。nameを指定しなければ内部で一意な名前を生成する。existsがtrueの場合は
      * "font create"を呼ばず、既存の名前付きフォント(TkDefaultFont等)をそのまま参照する。
-     * 呼び出しスレッドのcurrent interpreterがあればそれに束縛して実体を作り、無ければ未初期化の
-     * プレースホルダのままになる(StringVar()と同じ理由・同じ流儀でparentを廃止した)。
+     * 呼び出しスレッドのcurrent interpreterに束縛して実体を作る(StringVar()と同じ理由・
+     * 同じ流儀でparentを廃止した。current_interp()はInterpreterが無ければその場で生成する)。
      */
     explicit Font(const std::map<std::string, ArgValue>& option = {},
                   const std::string& name = "", bool exists = false);
@@ -1635,7 +1634,7 @@ class Style : public InterpreterClient
 {
 public:
 
-    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛、無ければプレースホルダのまま)。 */
+    /** StringVar()と同じ理由・同じ流儀(current_interp()に束縛。無ければその場で生成される)。 */
     Style();
 
     /** 指定style(例: "TButton"、全体既定は"." )の既定オプションを設定する。 */
