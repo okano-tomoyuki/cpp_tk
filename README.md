@@ -161,6 +161,15 @@ int main()
   UndefinedBehaviorSanitizerビルドで機械的に検出することを推奨します）。
 - **親を必須の明示引数として渡す構築方式です**。Python Tkinterの暗黙のデフォルトroot省略
   （`master=None`）に相当する機能はありません。
+- **親と全く同じ具象型のWidgetを1引数で渡すとコンパイルエラーになります**。例えば
+  `ttk::Frame child(container);`で`container`も`ttk::Frame`の場合、`Widget`のコピー禁止に伴い
+  暗黙生成される`Frame(const Frame&)`(delete済み)が、C++の仕様上「型が完全一致する候補は
+  delete済みでも常に最優先される」ため選ばれてしまい、delete済み関数の呼び出しとしてエラーに
+  なります(他のコンストラクタのシグネチャをどう工夫してもこの優先順位は覆せません)。
+  `as_parent()`を経由することで回避できます。
+  ```cpp
+  ttk::Frame child(tk::as_parent(container)); // container自身と同じ型でもコンパイルできる
+  ```
 - **1スレッドにつき1つのTclインタプリタのみ**をサポートします。同一スレッドで複数の独立した
   `Tk`ルートを同時併存させて使い分けることはできません。
 - **C++11をターゲット**にしています。

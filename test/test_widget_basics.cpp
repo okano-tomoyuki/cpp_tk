@@ -277,3 +277,18 @@ TEST_CASE("lift/lower: 例外にならない")
     CHECK_NOTHROW(f1.lift());
     CHECK_NOTHROW(f2.lower());
 }
+
+TEST_CASE("as_parent: 親と同じ具象型を渡す場合のコンパイルエラーをas_parent()経由で回避できる")
+{
+    tk::Tk root;
+    root.withdraw();
+    tk::Frame parent(root);
+
+    // tk::Frame child(parent); は Frame(const Frame&)(コピー禁止によりdelete済み)が
+    // 完全一致としてオーバーロード解決で選ばれてしまいコンパイルエラーになる
+    // (docs/tasks.md I節参照)。as_parent()で静的型をWidget&に変えることで回避する。
+    tk::Frame child(tk::as_parent(parent));
+    child.pack();
+
+    CHECK(child.winfo_parent() == parent.full_name());
+}

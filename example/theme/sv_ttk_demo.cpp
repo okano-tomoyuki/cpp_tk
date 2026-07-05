@@ -38,9 +38,8 @@ int main()
     tk::StringVar choice;
     choice.set("1");
     // containerと同じ型(ttk::Frame)を親として直接渡すと、Widgetのコピー禁止のために
-    // コピーコンストラクタと曖昧になる(docs/tasks.md B節参照)ため、Widget&へ明示的に
-    // アップキャストする。
-    ttk::Frame radio_row(static_cast<const tk::Widget&>(container));
+    // コピーコンストラクタと曖昧になる(docs/tasks.md I節参照)ため、as_parent()を経由する。
+    ttk::Frame radio_row(tk::as_parent(container));
     radio_row.pack({{"fill", "x"}, {"pady", 4}});
     ttk::Radiobutton radio1(radio_row, {{"text", "Choice 1"}});
     radio1.variable(choice).value("1");
