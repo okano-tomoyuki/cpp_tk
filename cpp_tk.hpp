@@ -95,6 +95,7 @@ struct Event
 
 class Interpreter;
 class Widget;
+class Var;
 
 class ArgValue
 {
@@ -125,6 +126,14 @@ public:
     ArgValue(const std::vector<uint8_t>& bytes);
 
     ArgValue(const std::vector<std::string>& list);
+
+    /**
+     * Var(StringVar等)を渡すとname()を取り出してSTRING扱いにする(Python本家のconfig(variable=var)相当の書き味)。
+     * name()を読むだけで保持はしないが、Menu::add_checkbutton等のように、ここが"-variable"/"-textvariable"
+     * 相当のオプションへVarを渡す唯一の経路になるケースがあるため、Checkbutton::variable()等と同じ理由で
+     * 右辺値の一時変数を弾くためあえて非constの参照にしている。
+     */
+    ArgValue(Var& var);
 
     ArgValue(const ArgValue& other);
 
@@ -771,7 +780,12 @@ public:
 
     Checkbutton& text(const std::string& text);
 
-    Checkbutton& variable(Var* var);
+    /**
+     * varはBooleanVar/IntVar/StringVarのいずれも本家同様に利用できる(onvalue/offvalueで対応する値を指定する)。
+     * name()を読むだけで保持はしないため、生存期間はこの呼び出し中だけ有効であれば良い。右辺値の一時変数を
+     * 弾くためあえて非constの参照にしている。
+     */
+    Checkbutton& variable(Var& var);
 
     Checkbutton& command(std::function<void()> callback);
 
@@ -785,11 +799,16 @@ class Entry : public Widget
 
 public:
 
-    Entry();
+    Entry() = default;
 
     explicit Entry(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
-    Entry& textvariable(Var* var);
+    /**
+     * name()を読むだけで保持はしない(Tkの-textvariableはウィジェットの表示テキストとTcl変数を
+     * 自動で双方向同期するため、get()/set()相当の操作は常にウィジェット自身を経由すればよく、
+     * Var側を後から参照する必要が無い)。右辺値の一時変数を弾くためあえて非constの参照にしている。
+     */
+    Entry& textvariable(StringVar& var);
 
     Entry& state(const std::string& state);
 
@@ -801,8 +820,6 @@ public:
 
     Entry& erase(const std::string& start, const std::string& end = "");
 
-    Entry& set(const std::string& value);
-
     std::string get() const;
 
     /**
@@ -811,10 +828,6 @@ public:
      * modeは"none"/"focus"/"focusin"/"focusout"/"key"/"all"。callbackがfalseを返すと編集は拒否される。
      */
     Entry& validate(const std::string& mode, std::function<bool(const std::string&)> callback);
-
-private:
-
-    Var* text_var_;
 
 };
 
@@ -1010,7 +1023,9 @@ public:
     
     Radiobutton& text(const std::string& text); 
     
-    Radiobutton& variable(Var* var); 
+    /** varはStringVar/IntVarのいずれも本家同様に利用できる。name()を読むだけで保持はしないため、
+     *  生存期間はこの呼び出し中だけ有効であれば良い。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
+    Radiobutton& variable(Var& var);
     
     Radiobutton& value(const std::string& val);
 
@@ -1072,7 +1087,8 @@ public:
     
     Spinbox& increment(double val); 
     
-    Spinbox& textvariable(Var* var); 
+    /** name()を読むだけで保持はしない。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
+    Spinbox& textvariable(StringVar& var);
     
     Spinbox& command(std::function<void()> callback); 
 
@@ -1286,9 +1302,11 @@ public:
     explicit Checkbutton(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
     Checkbutton& text(const std::string& text);
-    
-    Checkbutton& variable(Var* var); 
-    
+
+    /** varはBooleanVar/IntVar/StringVarのいずれも本家同様に利用できる。name()を読むだけで保持はしないため、
+     *  生存期間はこの呼び出し中だけ有効であれば良い。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
+    Checkbutton& variable(Var& var);
+
     Checkbutton& command(std::function<void()> callback);
 
     /** commandを疑似的に発火させる(Python Checkbutton.invoke()相当)。 */
@@ -1301,13 +1319,14 @@ class Combobox : public Widget
 
 public:
 
-    Combobox();
+    Combobox() = default;
 
     explicit Combobox(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
     Combobox& values(const std::vector<std::string>& items);
 
-    Combobox& textvariable(Var* var);
+    /** name()を読むだけで保持はしない。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
+    Combobox& textvariable(StringVar& var);
 
     Combobox& width(const int& width);
 
@@ -1319,10 +1338,12 @@ public:
 
     Combobox& font(const font::Font& font);
 
+    /** 本家ttk::Combobox.set()/Tclの"ttk::combobox set"に対応する。 */
     Combobox& set(const std::string& value);
 
     Combobox& insert(const std::string& index, const std::string& text);
-    
+
+    /** 本家ttk::Combobox.get()/Tclの"ttk::combobox get"に対応する。 */
     std::string get() const;
 
     Combobox& erase(const std::string& start, const std::string& end);
@@ -1331,11 +1352,6 @@ public:
 
     Combobox& current(const int& idx);
 
-
-private:
-
-    Var* text_var_;
-    
 };
 
 class Entry : public Widget
@@ -1343,11 +1359,12 @@ class Entry : public Widget
 
 public:
 
-    Entry();
+    Entry() = default;
 
     explicit Entry(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
-    Entry& textvariable(Var* var);
+    /** name()を読むだけで保持はしない。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
+    Entry& textvariable(StringVar& var);
 
     Entry& state(const std::string& state);
 
@@ -1359,8 +1376,6 @@ public:
 
     Entry& erase(const std::string& start, const std::string& end = "");
 
-    Entry& set(const std::string& value);
-
     std::string get() const;
 
     Entry& font(const font::Font& font);
@@ -1371,10 +1386,6 @@ public:
      * modeは"none"/"focus"/"focusin"/"focusout"/"key"/"all"。callbackがfalseを返すと編集は拒否される。
      */
     Entry& validate(const std::string& mode, std::function<bool(const std::string&)> callback);
-
-private:
-
-    Var* text_var_;
 
 };
 
@@ -1468,7 +1479,9 @@ public:
     
     Radiobutton& text(const std::string& text); 
     
-    Radiobutton& variable(Var* var); 
+    /** varはStringVar/IntVarのいずれも本家同様に利用できる。name()を読むだけで保持はしないため、
+     *  生存期間はこの呼び出し中だけ有効であれば良い。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
+    Radiobutton& variable(Var& var);
     
     Radiobutton& value(const std::string& val);
 
@@ -1540,7 +1553,8 @@ public:
     
     Spinbox& increment(double val); 
     
-    Spinbox& textvariable(Var* var); 
+    /** name()を読むだけで保持はしない。右辺値の一時変数を弾くためあえて非constの参照にしている。 */
+    Spinbox& textvariable(StringVar& var);
     
     Spinbox& command(std::function<void()> callback); 
 

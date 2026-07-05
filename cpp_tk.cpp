@@ -388,6 +388,10 @@ ArgValue::ArgValue(const std::vector<std::string>& list)
     , list_(new std::vector<std::string>(list))
 {}
 
+ArgValue::ArgValue(Var& var)
+    : ArgValue(var.name())
+{}
+
 ArgValue::ArgValue(const ArgValue& other)
     : type_(ValueType::NONE)
     , str_(nullptr)
@@ -1178,9 +1182,9 @@ Checkbutton& Checkbutton::text(const std::string& text)
     return *this;
 }
 
-Checkbutton& Checkbutton::variable(Var* var)
+Checkbutton& Checkbutton::variable(Var& var)
 {
-    config({{"variable", var->name()}});
+    config({{"variable", var}});
     return *this;
 }
 
@@ -1660,21 +1664,15 @@ Canvas& Canvas::height(const int &height)
     return *this;
 }
 
-Entry::Entry()
-    : text_var_(nullptr)
-{}
-
 Entry::Entry(const Widget& parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "entry", "e")
-    , text_var_(nullptr)
 {
     config(options);
 }
 
-Entry& Entry::textvariable(Var* var)
+Entry& Entry::textvariable(StringVar& var)
 {
-    text_var_ = var;
-    config({{"textvariable", var->name()}});
+    config({{"textvariable", var}});
     return *this;
 }
 
@@ -1690,13 +1688,13 @@ Entry& Entry::icursor(const std::string& index)
     return *this;
 }
 
-Entry& Entry::insert(const std::string& index, const std::string& text) 
+Entry& Entry::insert(const std::string& index, const std::string& text)
 {
     call({impl_->full_name, "insert", index, text});
     return *this;
 }
 
-int Entry::index(const std::string& index) const 
+int Entry::index(const std::string& index) const
 {
     auto ok  = false;
     auto ret = call({impl_->full_name, "index", index}, &ok);
@@ -1705,7 +1703,7 @@ int Entry::index(const std::string& index) const
     return std::stol(ret);
 }
 
-Entry& Entry::erase(const std::string& start, const std::string& end) 
+Entry& Entry::erase(const std::string& start, const std::string& end)
 {
     std::vector<ArgValue> words = {impl_->full_name, "delete", start};
     if (!end.empty())
@@ -1714,22 +1712,8 @@ Entry& Entry::erase(const std::string& start, const std::string& end)
     return *this;
 }
 
-Entry& Entry::set(const std::string& value) 
-{
-    if (text_var_)
-    {
-        text_var_->set_var(value);
-        return *this;
-    }
-    erase("0", "end");
-    insert("0", value);
-    return *this;
-}
-
 std::string Entry::get() const
 {
-    if (text_var_)
-        return text_var_->get_var();
     auto ok  = false;
     auto ret = call({impl_->full_name, "get"}, &ok);
     return ret;
@@ -2074,9 +2058,9 @@ Radiobutton& Radiobutton::text(const std::string& text)
     return *this;
 }
 
-Radiobutton& Radiobutton::variable(Var* var)
+Radiobutton& Radiobutton::variable(Var& var)
 {
-    config({{"variable", var->name()}});
+    config({{"variable", var}});
     return *this;
 }
 
@@ -2184,9 +2168,9 @@ Spinbox& Spinbox::increment(double val)
     return *this;
 }
 
-Spinbox& Spinbox::textvariable(Var* var)
+Spinbox& Spinbox::textvariable(StringVar& var)
 {
-    config({{"textvariable", var->name()}});
+    config({{"textvariable", var}});
     return *this;
 }
 
@@ -2544,10 +2528,9 @@ Checkbutton& Checkbutton::text(const std::string& text)
     return *this;
 }
 
-Checkbutton& Checkbutton::variable(Var* var)
+Checkbutton& Checkbutton::variable(Var& var)
 {
-
-    config({{"variable", var->name()}});
+    config({{"variable", var}});
     return *this;
 }
 
@@ -2564,13 +2547,8 @@ std::string Checkbutton::invoke()
     return Widget::call({impl_->full_name, "invoke"});
 }
 
-Combobox::Combobox()
-    : text_var_(nullptr)
-{}
-
 Combobox::Combobox(const Widget& parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::combobox", "ttk_combobox")
-    , text_var_(nullptr)
 {
     config(options);
 }
@@ -2583,10 +2561,9 @@ Combobox& Combobox::values(const std::vector<std::string>& items)
     return *this;
 }
 
-Combobox& Combobox::textvariable(Var* var) 
+Combobox& Combobox::textvariable(StringVar& var)
 {
-    text_var_ = var;
-    config({{"textvariable", var->name()}});
+    config({{"textvariable", var}});
     return *this;
 }
 
@@ -2620,16 +2597,9 @@ Combobox& Combobox::font(const font::Font& font)
     return *this;
 }
 
-Combobox& Combobox::set(const std::string& value) 
+Combobox& Combobox::set(const std::string& value)
 {
-    if (text_var_)
-    {
-        text_var_->set_var(value);
-        return *this;
-    }
-
-    erase("0", "end");
-    insert("0", value);
+    call({impl_->full_name, "set", value});
     return *this;
 }
 
@@ -2662,21 +2632,15 @@ Combobox& Combobox::current(const int& idx)
     return *this;    
 }
 
-Entry::Entry()
-    : text_var_(nullptr)
-{}
-
 Entry::Entry(const Widget& parent, const std::map<std::string, ArgValue>& options)
     : Widget(parent, "ttk::entry", "ttk_entry")
-    , text_var_(nullptr)
 {
     config(options);
 }
 
-Entry& Entry::textvariable(Var* var)
+Entry& Entry::textvariable(StringVar& var)
 {
-    text_var_ = var;
-    config({{"textvariable", var->name()}});
+    config({{"textvariable", var}});
     return *this;
 }
 
@@ -2716,26 +2680,8 @@ Entry& Entry::erase(const std::string& start, const std::string& end)
     return *this;
 }
 
-Entry& Entry::set(const std::string& value) 
-{
-    if (text_var_)
-    {
-        text_var_->set_var(value);
-        return *this;
-    }
-
-    erase("0", "end");
-    insert("0", value);
-    return *this;
-}
-
 std::string Entry::get() const
 {
-    if (text_var_)
-    {
-        return text_var_->get_var();
-    }
-
     auto ok  = false;
     auto ret = call({impl_->full_name, "get"}, &ok);
     return ret;
@@ -2876,9 +2822,9 @@ Radiobutton& Radiobutton::text(const std::string& text)
     return *this;
 }
 
-Radiobutton& Radiobutton::variable(Var* var)
+Radiobutton& Radiobutton::variable(Var& var)
 {
-    config({{"variable", var->name()}});
+    config({{"variable", var}});
     return *this;
 }
 
@@ -2990,9 +2936,9 @@ Spinbox& Spinbox::increment(double val)
     return *this;
 }
 
-Spinbox& Spinbox::textvariable(Var* var)
+Spinbox& Spinbox::textvariable(StringVar& var)
 {
-    config({{"textvariable", var->name()}});
+    config({{"textvariable", var}});
     return *this;
 }
 
