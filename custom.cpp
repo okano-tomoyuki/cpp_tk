@@ -103,7 +103,7 @@ std::string askstring(const Widget& parent, const std::string& title, const std:
 
     // StringVarはWidgetと異なりコピー禁止ではない(Tcl変数名を指すだけの軽量な値)ため、
     // handle()経由の再構築を使わずコールバックへそのまま値渡しできる。
-    StringVar value(dialog);
+    StringVar value;
     value.set(initial_value);
 
     Entry entry(dialog);
