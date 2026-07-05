@@ -158,6 +158,44 @@ private:
     void copy_from(const ArgValue& other);
 };
 
+/**
+ * Interpreterと1:1で結び付くオブジェクト(Widget/PhotoImage/font::Font/ttk::Style/Var)の共通基底。
+ * 派生クラスは「自分のInterpreterポインタがどこに格納されているか」をinterp()で教えるだけで、
+ * nullptrガード付きの生Tcl呼び出しcall()が使えるようになる
+ * (Python本家におけるself.tk.call(...)のtk部分の置き換えに相当する)。
+ */
+class InterpreterClient
+{
+
+public:
+
+    /**
+     * 未ラップのTclサブコマンド/オプションを直接呼び出すためのエスケープハッチ(Python self.tk.call(...)相当)。
+     * 名前をinvokeではなくcallにしているのは、本家Python tkinterが同じ役割をself.tk.call(...)と
+     * 呼んでいることに合わせるため(invokeはButton等の実在する「クリックを疑似的に発火させる」
+     * 公開APIの名前として空けておく)。
+     */
+    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
+
+protected:
+
+    virtual ~InterpreterClient() = default;
+
+    /** 自分が紐づくInterpreterを返す(未初期化ならnullptr)。派生クラスは自身の格納場所を返すだけでよい。 */
+    virtual Interpreter* interp() const = 0;
+
+    /** 診断メッセージに使うクラス名。派生クラスは必要に応じてoverrideする。 */
+    virtual const char* type_name() const { return "object"; }
+
+    /**
+     * interp()を呼び、nullptrなら「<operation>() called on an uninitialized <type_name()>」という
+     * エラーメッセージを出力する。call()以外の操作(Var::get_var/set_var/trace_var等)でも
+     * 同じガードを再利用するためのヘルパー。
+     */
+    Interpreter* checked_interp(const char* operation) const;
+
+};
+
 class Object
 {
 
@@ -180,7 +218,7 @@ private:
 
 };
 
-class Var : public Object
+class Var : public Object, public InterpreterClient
 {
 
 public:
@@ -206,13 +244,16 @@ public:
 
 protected:
 
+    Interpreter* interp() const override { return interp_; }
+
+    const char* type_name() const override { return "Var"; }
+
     Interpreter* interp_;
 
     std::string  name_;
 
-    // interp_がnullptrの場合(デフォルト構築のまま未初期化/既に破棄された等)にセグメンテーション
-    // 違反を起こさないためのガード。派生クラスはinterp_->set_var/get_var/trace_varを直接呼ばず、
-    // これらのラッパー経由で呼び出す。
+    // 派生クラスはinterp_->set_var/get_var/trace_varを直接呼ばず、これらのラッパー経由で
+    // 呼び出す(未初期化/既に破棄されたinterp_に対するガードはInterpreterClient::checked_interp()に集約)。
     void trace_var(std::function<void(const std::string&)> callback);
 
     void trace_var(std::function<void(const int&)> callback);
@@ -288,7 +329,7 @@ public:
 
 };
 
-class PhotoImage : public Object
+class PhotoImage : public Object, public InterpreterClient
 {
 public:
     PhotoImage();
@@ -297,15 +338,18 @@ public:
 
     const std::string& name() const;
 
+protected:
+    Interpreter* interp() const override { return interp_; }
+
+    const char* type_name() const override { return "PhotoImage"; }
+
 private:
     Interpreter* interp_;
     std::string  name_;
-
-    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
 };
 
 
-class Widget : public Object
+class Widget : public Object, public InterpreterClient
 {
 
 public:
@@ -472,14 +516,13 @@ protected:
 
     std::shared_ptr<Impl> impl_ = std::make_shared<Impl>();
 
-    // impl_->interpがnullptrの場合(デフォルト構築のまま未初期化/既に破棄された等)に
-    // セグメンテーション違反を起こさないためのガード。派生クラスはimpl_->interp->invoke/
-    // register_*_callbackを直接呼ばず、これらのラッパー経由で呼び出す。
-    // 名前をinvokeではなくcallにしているのは、本家Python tkinterが同じ役割を
-    // self.tk.call(...)と呼んでいることに合わせるため(invokeはButton等の実在する
-    // 「クリックを疑似的に発火させる」公開APIの名前として空けておく)。
-    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
+    Interpreter* interp() const override { return impl_->interp; }
 
+    const char* type_name() const override { return "Widget"; }
+
+    // register_*_callbackはimpl_->interp->register_*_callbackを直接呼ばず、これらの
+    // ラッパー経由で呼び出す(impl_->interpが未初期化/既に破棄されている場合のガードは
+    // InterpreterClient::checked_interp()に集約されている)。
     void register_void_callback(const std::string& name, std::function<void()> callback) const;
 
     void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback) const;
@@ -1117,7 +1160,7 @@ public:
 namespace font
 {
 
-class Font : public Object
+class Font : public Object, public InterpreterClient
 {
 public:
 
@@ -1156,13 +1199,17 @@ public:
 
     const std::string& name() const;
 
+protected:
+
+    Interpreter* interp() const override { return interp_; }
+
+    const char* type_name() const override { return "Font"; }
+
 private:
 
     Interpreter*    interp_;
 
     std::string     name_;
-
-    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
 
 };
 
@@ -1182,9 +1229,10 @@ namespace ttk
 /**
  * Python tkinter.ttk.Styleに対応する(configure/map/theme_use/theme_names相当のみ)。
  * Style自体は名前付きTclオブジェクトを生成せず、"ttk::style"/"ttk::setTheme"コマンドを
- * そのまま呼ぶだけなので、Object(id自動採番)は継承しない。
+ * そのまま呼ぶだけなので、Object(id自動採番)は継承しない。InterpreterClient(Interpreterへの
+ * 結び付きのみを表す)は継承する。
  */
-class Style
+class Style : public InterpreterClient
 {
 public:
 
@@ -1214,11 +1262,15 @@ public:
     /** 現在有効なテーマ名を返す。 */
     std::string theme_use() const;
 
+protected:
+
+    Interpreter* interp() const override { return interp_; }
+
+    const char* type_name() const override { return "Style"; }
+
 private:
 
     Interpreter* interp_ = nullptr;
-
-    std::string call(const std::vector<ArgValue>& words, bool* success = nullptr) const;
 
 };
 

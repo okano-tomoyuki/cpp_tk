@@ -480,6 +480,28 @@ std::string Object::next()
     return std::to_string(count++);
 }
 
+Interpreter* InterpreterClient::checked_interp(const char* operation) const
+{
+    auto* p = interp();
+    if (p == nullptr)
+    {
+        std::cerr << "cpp_tk Error: " << operation << "() called on an uninitialized "
+                   << type_name() << " (interp == nullptr)." << std::endl;
+    }
+    return p;
+}
+
+std::string InterpreterClient::call(const std::vector<ArgValue>& words, bool* success) const
+{
+    auto* p = checked_interp("call");
+    if (p == nullptr)
+    {
+        if (success) *success = false;
+        return {};
+    }
+    return p->call(words, success);
+}
+
 Var::Var()
     : interp_(nullptr)
 {}
@@ -496,52 +518,32 @@ const std::string& Var::name() const
 
 std::string Var::get_var() const
 {
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: get_var() called on an uninitialized Var (interp_ == nullptr)." << std::endl;
-        return {};
-    }
-    return interp_->get_var(name_);
+    auto* p = checked_interp("get_var");
+    return p ? p->get_var(name_) : std::string{};
 }
 
 void Var::set_var(const std::string& value)
 {
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: set_var() called on an uninitialized Var (interp_ == nullptr)." << std::endl;
-        return;
-    }
-    interp_->set_var(name_, value);
+    auto* p = checked_interp("set_var");
+    if (p) p->set_var(name_, value);
 }
 
 void Var::trace_var(std::function<void(const std::string&)> callback)
 {
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: trace() called on an uninitialized Var (interp_ == nullptr)." << std::endl;
-        return;
-    }
-    interp_->trace_var(name_, callback);
+    auto* p = checked_interp("trace");
+    if (p) p->trace_var(name_, callback);
 }
 
 void Var::trace_var(std::function<void(const int&)> callback)
 {
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: trace() called on an uninitialized Var (interp_ == nullptr)." << std::endl;
-        return;
-    }
-    interp_->trace_var(name_, callback);
+    auto* p = checked_interp("trace");
+    if (p) p->trace_var(name_, callback);
 }
 
 void Var::trace_var(std::function<void(const double&)> callback)
 {
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: trace() called on an uninitialized Var (interp_ == nullptr)." << std::endl;
-        return;
-    }
-    interp_->trace_var(name_, callback);
+    auto* p = checked_interp("trace");
+    if (p) p->trace_var(name_, callback);
 }
 
 StringVar::StringVar(const Widget& parent)
@@ -646,65 +648,34 @@ const std::string& Widget::full_name() const
     return impl_->full_name;
 }
 
-std::string Widget::call(const std::vector<ArgValue>& words, bool* success) const
-{
-    if (impl_->interp == nullptr)
-    {
-        std::cerr << "cpp_tk Error: call() called on an uninitialized widget (interp == nullptr)." << std::endl;
-        if (success) *success = false;
-        return {};
-    }
-    return impl_->interp->call(words, success);
-}
-
 void Widget::register_void_callback(const std::string& name, std::function<void()> callback) const
 {
-    if (impl_->interp == nullptr)
-    {
-        std::cerr << "cpp_tk Error: register_void_callback() called on an uninitialized widget (interp == nullptr)." << std::endl;
-        return;
-    }
-    impl_->interp->register_void_callback(name, callback);
+    auto* p = checked_interp("register_void_callback");
+    if (p) p->register_void_callback(name, callback);
 }
 
 void Widget::register_string_callback(const std::string& name, std::function<void(const std::string&)> callback) const
 {
-    if (impl_->interp == nullptr)
-    {
-        std::cerr << "cpp_tk Error: register_string_callback() called on an uninitialized widget (interp == nullptr)." << std::endl;
-        return;
-    }
-    impl_->interp->register_string_callback(name, callback);
+    auto* p = checked_interp("register_string_callback");
+    if (p) p->register_string_callback(name, callback);
 }
 
 void Widget::register_double_callback(const std::string& name, std::function<void(const double&)> callback) const
 {
-    if (impl_->interp == nullptr)
-    {
-        std::cerr << "cpp_tk Error: register_double_callback() called on an uninitialized widget (interp == nullptr)." << std::endl;
-        return;
-    }
-    impl_->interp->register_double_callback(name, callback);
+    auto* p = checked_interp("register_double_callback");
+    if (p) p->register_double_callback(name, callback);
 }
 
 void Widget::register_event_callback(const std::string& name, std::function<void(const Event&)> callback) const
 {
-    if (impl_->interp == nullptr)
-    {
-        std::cerr << "cpp_tk Error: register_event_callback() called on an uninitialized widget (interp == nullptr)." << std::endl;
-        return;
-    }
-    impl_->interp->register_event_callback(name, callback);
+    auto* p = checked_interp("register_event_callback");
+    if (p) p->register_event_callback(name, callback);
 }
 
 void Widget::register_bool_callback(const std::string& name, std::function<bool(const std::string&)> callback) const
 {
-    if (impl_->interp == nullptr)
-    {
-        std::cerr << "cpp_tk Error: register_bool_callback() called on an uninitialized widget (interp == nullptr)." << std::endl;
-        return;
-    }
-    impl_->interp->register_bool_callback(name, callback);
+    auto* p = checked_interp("register_bool_callback");
+    if (p) p->register_bool_callback(name, callback);
 }
 
 Widget& Widget::pack(const std::map<std::string, ArgValue> &options)
@@ -1051,17 +1022,6 @@ PhotoImage::PhotoImage(const Widget& parent, const std::map<std::string, ArgValu
 const std::string& PhotoImage::name() const
 {
     return name_;
-}
-
-std::string PhotoImage::call(const std::vector<ArgValue>& words, bool* success) const
-{
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: call() called on an uninitialized PhotoImage (interp_ == nullptr)." << std::endl;
-        if (success) *success = false;
-        return {};
-    }
-    return interp_->call(words, success);
 }
 
 Tk::Tk()
@@ -2527,17 +2487,6 @@ const std::string& Font::name() const
     return name_;
 }
 
-std::string Font::call(const std::vector<ArgValue>& words, bool* success) const
-{
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: call() called on an uninitialized Font (interp_ == nullptr)." << std::endl;
-        if (success) *success = false;
-        return {};
-    }
-    return interp_->call(words, success);
-}
-
 } // font
 
 namespace ttk
@@ -2591,17 +2540,6 @@ Style& Style::theme_use(const std::string& theme_name)
 std::string Style::theme_use() const
 {
     return call({"ttk::style", "theme", "use"});
-}
-
-std::string Style::call(const std::vector<ArgValue>& words, bool* success) const
-{
-    if (interp_ == nullptr)
-    {
-        std::cerr << "cpp_tk Error: call() called on an uninitialized Style (interp_ == nullptr)." << std::endl;
-        if (success) *success = false;
-        return {};
-    }
-    return interp_->call(words, success);
 }
 
 Button::Button(const Widget& parent, const std::map<std::string, ArgValue>& options)
