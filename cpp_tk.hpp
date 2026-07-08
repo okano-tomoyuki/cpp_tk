@@ -98,6 +98,12 @@ class Interpreter;
 class Widget;
 class Var;
 
+/**
+ * JSON的な合成(配列の中に辞書、辞書の中に配列を任意にネストできる)を許容するタグ付き共用体。
+ * LIST/DICTの要素・値はいずれもArgValue自身なので、相互ネストは追加実装なしに成立する。
+ * かつて存在した`STRING_LIST`(フラットな文字列リスト専用、-filetypes等の入れ子構造を表現
+ * できなかった)は廃止し、`LIST`に一本化した(docs/tasks.md K節参照)。
+ */
 class ArgValue
 {
 public:
@@ -108,8 +114,9 @@ public:
         INT,
         DOUBLE,
         BOOL,
-        BYTES,      // バイナリデータ (PhotoImage 等) 用
-        STRING_LIST // Tclのリスト値(-filetypes等、要素ごとに個別quoteされたリストが必要な場合)用
+        BYTES, // バイナリデータ (PhotoImage 等) 用
+        LIST,  // Tclのリスト値(要素は任意のArgValue、入れ子可。例: -filetypes)
+        DICT   // Tclの辞書値(値は任意のArgValue、入れ子可)
     };
 
     ArgValue();
@@ -126,7 +133,11 @@ public:
 
     ArgValue(const std::vector<uint8_t>& bytes);
 
-    ArgValue(const std::vector<std::string>& list);
+    /** 例: -filetypesは{{"A", {"*.a", "*.A"}}, {"B", {"*.b"}}}のような波括弧リテラルで組める
+     *  (各要素・入れ子のリストも非explicitコンストラクタ経由で暗黙変換されるため)。 */
+    ArgValue(const std::vector<ArgValue>& list);
+
+    ArgValue(const std::map<std::string, ArgValue>& dict);
 
     /**
      * Var(StringVar等)を渡すとname()を取り出してSTRING扱いにする(Python本家のconfig(variable=var)相当の書き味)。
@@ -145,12 +156,13 @@ public:
     ValueType type() const;
 
     // 内部 Tcl_Obj 変換用アクセサ
-    int                            as_int()        const { return i_; }
-    double                         as_double()     const { return d_; }
-    bool                           as_bool()       const { return b_; }
-    const std::string&             as_string()     const { return *str_; }
-    const std::vector<uint8_t>&    as_bytes()      const { return *bytes_; }
-    const std::vector<std::string>& as_string_list() const { return *list_; }
+    int                          as_int()    const { return i_; }
+    double                       as_double() const { return d_; }
+    bool                         as_bool()   const { return b_; }
+    const std::string&           as_string() const { return *str_; }
+    const std::vector<uint8_t>&  as_bytes()  const { return *bytes_; }
+    const std::vector<ArgValue>& as_list()   const { return *list_; }
+    const std::map<std::string, ArgValue>& as_dict() const { return *dict_; }
 
 private:
     ValueType               type_;
@@ -160,13 +172,29 @@ private:
         double  d_;
         bool    b_;
     };
-    std::string*              str_;
-    std::vector<uint8_t>*     bytes_;
-    std::vector<std::string>* list_;
+    std::string*                     str_;
+    std::vector<uint8_t>*            bytes_;
+    std::vector<ArgValue>*           list_;
+    std::map<std::string, ArgValue>* dict_;
 
     void cleanup();
     void copy_from(const ArgValue& other);
 };
+
+/**
+ * ArgValue::LISTを波括弧リテラルから簡潔に組み立てるためのヘルパー。各要素は非explicitな
+ * ArgValueコンストラクタ経由で暗黙変換される。C++は「暗黙のユーザー定義変換は1回の変換
+ * シーケンスにつき1回まで」という制限があり、ArgValue自身のコンストラクタだけでは
+ * 2階層以上のネストを波括弧リテラルのみで表現できない(要素ごとの変換とその結果を包む
+ * 外側の変換の2回になってしまうため)。ネストする場合は内側でもlist()/dict()を明示的に
+ * 呼ぶことでこの制限を回避する(docs/tasks.md K節参照)。
+ * 使用例(-filetypes相当): list({list({"A", list({"*.a", "*.A"})}), list({"B", list({"*.b"})})})
+ */
+ArgValue list(std::initializer_list<ArgValue> items);
+
+/** ArgValue::DICTを波括弧リテラルから簡潔に組み立てるためのヘルパー。list()と同じ理由で、
+ *  ネストする場合は内側でもlist()/dict()を明示的に呼ぶ必要がある。 */
+ArgValue dict(std::initializer_list<std::pair<const std::string, ArgValue>> items);
 
 /** cpp_tkが送出する唯一の例外型。Tcl呼び出し失敗・未初期化オブジェクトへのアクセス等、理由はwhat()で判別する。 */
 class Error : public std::runtime_error
@@ -2261,6 +2289,16 @@ namespace filedialog
  * ファイル選択ダイアログを表示し、選択されたパスを返す(空文字列はキャンセル)。
  * 名前はPython tkinter.filedialog.askopenfilename()に合わせているが、Python本家のaskopenfile()は
  * パスではなくファイルオブジェクトを返す点で意味が異なることに注意。
+ *
+ * "filetypes"オプションは、tk::list()を使って以下のように組み立てる
+ * (Tclの"-filetypes"は「[表示名, 拡張子群]という2要素のリストを並べたリスト」を要求するため、
+ * 単純な文字列リストでは表現できない。docs/tasks.md K節参照)。
+ * ```
+ * askopenfile({{"filetypes", tk::list({
+ *     tk::list({"Text files", tk::list({"*.txt", "*.TXT"})}),
+ *     tk::list({"All files", tk::list({"*"})})
+ * })}});
+ * ```
  */
 std::string askopenfile(const std::map<std::string, ArgValue>& options = {});
 

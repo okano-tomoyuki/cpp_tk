@@ -19,6 +19,7 @@ foreach(test_name
     test_uninitialized_objects
     test_sv_ttk_theme
     test_calendar
+    test_argvalue_composition
 )
     add_executable(${test_name}
         ${test_name}.cpp

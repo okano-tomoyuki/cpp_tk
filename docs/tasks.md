@@ -508,3 +508,28 @@ C++の規格上、**「完全一致」は「変換一致」より常に優先さ
 
 ### Linux版Canvas::postscriptのSegFault(未調査)
 Linux版`test_round5_bcd.cpp`の"Canvas::postscript: PostScriptデータを文字列で返す"テストケースがSIGSEGVでクラッシュすることが判明した。Windows版では同テストは問題なくパスしている(このセッションを通じてWindows上のctestは繰り返しグリーンを確認済み)ため、**プラットフォーム固有の問題である可能性が高い**(Linux版TkのPostScript出力機構の差異、ヘッドレスXvfb環境特有の問題等が考えられるが未調査)。ユーザの指示により本件は別途調査することとし、今回はCIがこの種の失敗で無期限にハングしないようにする対応のみ行った。
+
+---
+
+## K. ArgValueがJSON的な相互ネスト(配列/辞書の合成)を許容できない問題（2026-07-06対応済み）
+
+### 経緯
+`cpp_tk::filedialog::askopenfile`の`-filetypes`オプション(Python本家の`filetypes=[("Text files","*.txt"), ...]`相当)を渡そうとすると、Tclが要求する「[表示名, 拡張子群]という2要素のリストを並べたリスト」という**2階層以上ネストした構造**を、既存の`ArgValue`では表現できないことが発覚した。
+
+### 原因
+`ArgValue`には`STRING_LIST`という型があったが、これは`std::vector<std::string>`(フラットな文字列リストのみ)しか保持できず、要素自身がさらにリストになるようなネスト構造を表現できなかった。
+
+### 対応方針の変遷（議論の要点）
+1. 当初「`filetypes()`という専用のヘルパー関数」「`askopenfile`に専用引数を追加」を提案したが、いずれもユーザから「`ArgValue`自体をJSON的にコンポジション可能な構造にすべきでは」という指摘があり撤回。
+2. `ArgValue`に`std::vector<ArgValue>`(配列、要素は任意のArgValue)と`std::map<std::string, ArgValue>`(辞書、値は任意のArgValue)を追加する方針で合意。これにより配列↔辞書の相互ネストが構造的に可能になる。名称はTcl用語に合わせて`LIST`/`DICT`とした。
+3. 既存の`STRING_LIST`は`LIST`(要素が全て文字列であるケースとして一般化できる)に統合して**廃止**した。これにより、`ArgValue(const std::vector<std::string>&)`と新設する`ArgValue(const std::vector<ArgValue>&)`が同時に存在することで生じる、波括弧リテラルの型推論の曖昧性(`ArgValue({"a","b","c"})`が`vector<string>`/`vector<ArgValue>`のどちらとも解釈できてしまう問題)も同時に解消した。
+4. `-filetypes`は当初「辞書」的に見えたが、Tk公式ドキュメントを確認した結果、実際は**「(名前, 拡張子群)のペアを並べた順序付きリスト」であり辞書ではない**と判明した(`std::map`を使うとキー順に並び替えられ挿入順が失われ、ファイル種類ドロップダウンの表示順が壊れる実害がある)。そのため`-filetypes`自体は`LIST`のみで(DICTを使わずに)表現する。
+5. **重要な訂正**: 当初「素の波括弧リテラルだけでネストが書ける(ヘルパー関数不要)」と結論したが、実際にコンパイルして検証したところ**誤りだった**。C++の「暗黙のユーザー定義変換は1回の変換シーケンスにつき1回まで」という制限により、`ArgValue`自身のコンストラクタだけでは2階層以上のネストを波括弧リテラルのみで表現できないことが分かった(要素ごとの変換+それを包む外側の変換で2回になってしまうため)。この訂正を踏まえ、`tk::list()`/`tk::dict()`という軽量なヘルパー自由関数を追加する方針に転換した。
+
+### 最終実装
+- `ArgValue::ValueType`から`STRING_LIST`を廃止し、`LIST`(`std::vector<ArgValue>`)と`DICT`(`std::map<std::string, ArgValue>`)を追加した。
+- `make_obj()`(`cpp_tk.cpp`)を、`LIST`/`DICT`それぞれ自分自身を再帰呼び出しして任意の深さのネストを正しく`Tcl_Obj`へ変換するように拡張した(`Tcl_NewListObj`/`Tcl_NewDictObj`+`Tcl_DictObjPut`)。
+- 自由関数`tk::list(std::initializer_list<ArgValue>)`/`tk::dict(std::initializer_list<std::pair<const std::string, ArgValue>>)`を追加した。ネストする場合は内側でも明示的に`list()`/`dict()`を呼ぶ必要がある(1階層につき1回のuser-defined conversionしか許されないC++の制限のため、完全に素の波括弧リテラルだけでは不可能)。
+- `ArgValue(const std::vector<std::string>&)`廃止に伴い、既存の暗黙変換に依存していた5箇所(`Widget::bindtags`/`Treeview::selection_set・add・remove・toggle`/`Combobox::values`/`Style::map`)を`std::vector<ArgValue>(v.begin(), v.end())`という明示変換に修正した(いずれも内部実装のみ、公開APIの型は不変)。
+- `test/test_argvalue_composition.cpp`を新規追加(3件)。`tk::list()`による-filetypes相当のネスト構造、`tk::dict()`によるTcl dictとしての機能、LIST/DICTの相互ネストを、実際にTclの`llength`/`lindex`/`dict get`で検証している。
+- `cpp_tk.hpp`の`askopenfile()`のドキュメントコメントに、`tk::list()`を使った`-filetypes`の実例を追記した。

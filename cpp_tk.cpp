@@ -81,15 +81,26 @@ Tcl_Obj* make_obj(Tcl_Interp* interp, const cpp_tk::ArgValue& v)
             return Tcl_NewBooleanObj(v.as_bool() ? 1 : 0);
         case cpp_tk::ArgValue::ValueType::BYTES:
             return Tcl_NewByteArrayObj(v.as_bytes().data(), (int)v.as_bytes().size());
-        case cpp_tk::ArgValue::ValueType::STRING_LIST:
+        case cpp_tk::ArgValue::ValueType::LIST:
         {
-            const auto& list = v.as_string_list();
             Tcl_Obj* list_obj = Tcl_NewListObj(0, nullptr);
-            for (const auto& item : list)
+            for (const auto& item : v.as_list())
             {
-                Tcl_ListObjAppendElement(interp, list_obj, Tcl_NewStringObj(item.c_str(), (int)item.size()));
+                // 要素自身がLIST/DICTの場合も含め、make_obj()を再帰呼び出しすることで
+                // 任意の深さのネストを正しく組み立てる。
+                Tcl_ListObjAppendElement(interp, list_obj, make_obj(interp, item));
             }
             return list_obj;
+        }
+        case cpp_tk::ArgValue::ValueType::DICT:
+        {
+            Tcl_Obj* dict_obj = Tcl_NewDictObj();
+            for (const auto& kv : v.as_dict())
+            {
+                Tcl_Obj* key_obj = Tcl_NewStringObj(kv.first.c_str(), (int)kv.first.size());
+                Tcl_DictObjPut(interp, dict_obj, key_obj, make_obj(interp, kv.second));
+            }
+            return dict_obj;
         }
         default:
             return Tcl_NewObj();
@@ -455,6 +466,7 @@ ArgValue::ArgValue()
     , str_(nullptr)
     , bytes_(nullptr)
     , list_(nullptr)
+    , dict_(nullptr)
 {}
 
 ArgValue::ArgValue(const std::string& s)
@@ -462,6 +474,7 @@ ArgValue::ArgValue(const std::string& s)
     , str_(new std::string(s))
     , bytes_(nullptr)
     , list_(nullptr)
+    , dict_(nullptr)
 {}
 
 ArgValue::ArgValue(const char* s)
@@ -469,6 +482,7 @@ ArgValue::ArgValue(const char* s)
     , str_(new std::string(s))
     , bytes_(nullptr)
     , list_(nullptr)
+    , dict_(nullptr)
 {}
 
 ArgValue::ArgValue(int v)
@@ -477,6 +491,7 @@ ArgValue::ArgValue(int v)
     , str_(nullptr)
     , bytes_(nullptr)
     , list_(nullptr)
+    , dict_(nullptr)
 {}
 
 ArgValue::ArgValue(double v)
@@ -485,6 +500,7 @@ ArgValue::ArgValue(double v)
     , str_(nullptr)
     , bytes_(nullptr)
     , list_(nullptr)
+    , dict_(nullptr)
 {}
 
 ArgValue::ArgValue(bool v)
@@ -493,6 +509,7 @@ ArgValue::ArgValue(bool v)
     , str_(nullptr)
     , bytes_(nullptr)
     , list_(nullptr)
+    , dict_(nullptr)
 {}
 
 ArgValue::ArgValue(const std::vector<uint8_t>& bytes)
@@ -500,13 +517,23 @@ ArgValue::ArgValue(const std::vector<uint8_t>& bytes)
     , str_(nullptr)
     , bytes_(new std::vector<uint8_t>(bytes))
     , list_(nullptr)
+    , dict_(nullptr)
 {}
 
-ArgValue::ArgValue(const std::vector<std::string>& list)
-    : type_(ValueType::STRING_LIST)
+ArgValue::ArgValue(const std::vector<ArgValue>& list)
+    : type_(ValueType::LIST)
     , str_(nullptr)
     , bytes_(nullptr)
-    , list_(new std::vector<std::string>(list))
+    , list_(new std::vector<ArgValue>(list))
+    , dict_(nullptr)
+{}
+
+ArgValue::ArgValue(const std::map<std::string, ArgValue>& dict)
+    : type_(ValueType::DICT)
+    , str_(nullptr)
+    , bytes_(nullptr)
+    , list_(nullptr)
+    , dict_(new std::map<std::string, ArgValue>(dict))
 {}
 
 ArgValue::ArgValue(Var& var)
@@ -518,13 +545,14 @@ ArgValue::ArgValue(const ArgValue& other)
     , str_(nullptr)
     , bytes_(nullptr)
     , list_(nullptr)
+    , dict_(nullptr)
 {
     copy_from(other);
 }
 
 ArgValue& ArgValue::operator=(const ArgValue& other)
 {
-    if (this != &other) 
+    if (this != &other)
     {
         cleanup();
         copy_from(other);
@@ -554,10 +582,15 @@ void ArgValue::cleanup()
         delete bytes_;
         bytes_ = nullptr;
     }
-    else if (type_ == ValueType::STRING_LIST && list_)
+    else if (type_ == ValueType::LIST && list_)
     {
         delete list_;
         list_ = nullptr;
+    }
+    else if (type_ == ValueType::DICT && dict_)
+    {
+        delete dict_;
+        dict_ = nullptr;
     }
     type_ = ValueType::NONE;
 }
@@ -568,6 +601,7 @@ void ArgValue::copy_from(const ArgValue& other)
     str_  = nullptr;
     bytes_ = nullptr;
     list_  = nullptr;
+    dict_  = nullptr;
 
     if (other.type_ == ValueType::STRING)
     {
@@ -589,10 +623,24 @@ void ArgValue::copy_from(const ArgValue& other)
     {
         bytes_ = new std::vector<uint8_t>(*other.bytes_);
     }
-    else if (other.type_ == ValueType::STRING_LIST)
+    else if (other.type_ == ValueType::LIST)
     {
-        list_ = new std::vector<std::string>(*other.list_);
+        list_ = new std::vector<ArgValue>(*other.list_);
     }
+    else if (other.type_ == ValueType::DICT)
+    {
+        dict_ = new std::map<std::string, ArgValue>(*other.dict_);
+    }
+}
+
+ArgValue list(std::initializer_list<ArgValue> items)
+{
+    return ArgValue(std::vector<ArgValue>(items));
+}
+
+ArgValue dict(std::initializer_list<std::pair<const std::string, ArgValue>> items)
+{
+    return ArgValue(std::map<std::string, ArgValue>(items));
 }
 
 Object::Object()
@@ -1302,7 +1350,7 @@ std::vector<std::string> Widget::bindtags() const
 
 Widget& Widget::bindtags(const std::vector<std::string>& tags)
 {
-    call({"bindtags", impl_->full_name, tags});
+    call({"bindtags", impl_->full_name, std::vector<ArgValue>(tags.begin(), tags.end())});
     return *this;
 }
 
@@ -3287,7 +3335,7 @@ Style& Style::map(const std::string& style_name, const std::map<std::string, std
     for (const auto& kv : options)
     {
         words.push_back("-" + kv.first);
-        words.push_back(kv.second);
+        words.push_back(std::vector<ArgValue>(kv.second.begin(), kv.second.end()));
     }
     call(words);
     return *this;
@@ -3431,9 +3479,9 @@ Combobox::Combobox(const Widget& parent, const std::map<std::string, ArgValue>& 
 
 Combobox& Combobox::values(const std::vector<std::string>& items)
 {
-    // ArgValue(vector<string>)がTcl_NewListObj経由で要素ごとに正しくquoteするため、
+    // ArgValue(vector<ArgValue>)がTcl_NewListObj経由で要素ごとに正しくquoteするため、
     // 手組みの "{" + item + "}" 文字列連結(itemが"}"を含むと壊れる)は不要。
-    config({{"values", items}});
+    config({{"values", std::vector<ArgValue>(items.begin(), items.end())}});
     return *this;
 }
 
@@ -4061,28 +4109,28 @@ std::vector<std::string> Treeview::selection() const
 // Tclの"ttk::treeview selection set/add/remove/toggle"はitemsを「1個のTclリスト引数」として
 // 受け取る(iid毎に別々の位置引数として渡すものではない)。iidにスペースを含む場合、位置引数を
 // 複数渡すとTclがその最初の引数だけを空白区切りのリストとして誤って再分割してしまうため、
-// ArgValue(vector<string>)のSTRING_LIST(Tcl_NewListObj経由で各要素を正しくquoteする)を使う。
+// ArgValue(vector<ArgValue>)のLIST(Tcl_NewListObj経由で各要素を正しくquoteする)を使う。
 Treeview& Treeview::selection_set(const std::vector<std::string>& iids)
 {
-    call({impl_->full_name, "selection", "set", iids});
+    call({impl_->full_name, "selection", "set", std::vector<ArgValue>(iids.begin(), iids.end())});
     return *this;
 }
 
 Treeview& Treeview::selection_add(const std::vector<std::string>& iids)
 {
-    call({impl_->full_name, "selection", "add", iids});
+    call({impl_->full_name, "selection", "add", std::vector<ArgValue>(iids.begin(), iids.end())});
     return *this;
 }
 
 Treeview& Treeview::selection_remove(const std::vector<std::string>& iids)
 {
-    call({impl_->full_name, "selection", "remove", iids});
+    call({impl_->full_name, "selection", "remove", std::vector<ArgValue>(iids.begin(), iids.end())});
     return *this;
 }
 
 Treeview& Treeview::selection_toggle(const std::vector<std::string>& iids)
 {
-    call({impl_->full_name, "selection", "toggle", iids});
+    call({impl_->full_name, "selection", "toggle", std::vector<ArgValue>(iids.begin(), iids.end())});
     return *this;
 }
 
