@@ -106,7 +106,7 @@ void rebuild_calendar_grid(const std::shared_ptr<Calendar::Model>& model)
                              model->display_month == model->selected_month &&
                              d == model->selected_day);
 
-        Label cell(as_parent(model->grid), {{"text", std::to_string(d)}, {"width", 3}});
+        Label cell(model->grid.as_parent(), {{"text", std::to_string(d)}, {"width", 3}});
         if (is_selected)
             cell.config({{"background", "#2f60d8"}, {"foreground", "#ffffff"}});
         cell.grid({{"row", row}, {"column", col}, {"padx", 1}, {"pady", 1}});

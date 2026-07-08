@@ -213,7 +213,7 @@ int main()
   なります(他のコンストラクタのシグネチャをどう工夫してもこの優先順位は覆せません)。
   `as_parent()`を経由することで回避できます。
   ```cpp
-  ttk::Frame child(tk::as_parent(container)); // container自身と同じ型でもコンパイルできる
+  ttk::Frame child(container.as_parent()); // container自身と同じ型でもコンパイルできる
   ```
 - **1スレッドにつき1つのTclインタプリタのみ**をサポートします。同一スレッドで複数の独立した
   `Tk`ルートを同時併存させて使い分けることはできません。

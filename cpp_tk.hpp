@@ -562,6 +562,17 @@ public:
 
     const std::string& full_name() const;
 
+    /**
+     * 親として自分自身を渡す際、実引数の静的型を`Widget&`に変えるためのヘルパー(README.mdの
+     * 制限事項・docs/tasks.md I節参照)。子ウィジェットの構築先と親の具象型が完全一致する場合
+     * (例: `ttk::Frame child(container);`でcontainerも`ttk::Frame`)、暗黙のコピー
+     * コンストラクタ(delete済み)が「型完全一致」を理由に最優先で選ばれてしまいコンパイル
+     * エラーになるが、`as_parent()`を経由すると渡る実引数の静的型が`const Widget&`になり、
+     * その条件自体を回避できる。
+     * 使用例: `ttk::Frame child(container.as_parent());`
+     */
+    const Widget& as_parent() const { return *this; }
+
     Widget& pack(const std::map<std::string, ArgValue> &options = {});
 
     Widget& pack_forget();
@@ -825,24 +836,6 @@ protected:
 
     void register_bool_callback(const std::string& name, std::function<bool(const std::string&)> callback) const;
 };
-
-/**
- * 親として渡すWidgetの静的型が、構築先のWidgetと全く同じ具象型の場合(例:
- * `ttk::Frame child(container);`でcontainerも`ttk::Frame`)、コンパイルエラーになる。
- * `Widget(const Widget&) = delete;`により派生クラスの暗黙のコピーコンストラクタも
- * 連動してdeleteされるが、C++の仕様上コピーコンストラクタは常に暗黙のオーバーロード候補で
- * あり続け、引数の型が完全一致する限りdelete済みでも最優先で選ばれてしまう(削除済み関数の
- * 呼び出しとしてエラーになる)ため、他のコンストラクタのシグネチャをどう工夫しても
- * 打ち消せない(README.mdの制限事項・docs/tasks.md I節参照)。
- * as_parent()は引数を`const Widget&`型として返すだけの薄いヘルパーで、これを経由することで
- * コンストラクタへ渡る実引数の静的型を`Widget&`に変え、「型が完全一致する」という、
- * 暗黙のコピーコンストラクタ候補が発動する条件そのものを回避する。
- * 使用例: `ttk::Frame child(as_parent(container));`
- */
-inline const Widget& as_parent(const Widget& parent)
-{
-    return parent;
-}
 
 class Tk : public Widget
 {
