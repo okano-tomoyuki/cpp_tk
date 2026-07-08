@@ -1,6 +1,6 @@
-// cpp_tk::custom::simpledialog::askstring()のEscapeキーキャンセルパスの回帰テスト。
-// 単独の.cpp/実行ファイルに分離している理由はtest_simpledialog_return.cpp冒頭のコメントを参照
-// (askstring()を同一プロセス内で2回連続実行するとハングする現象が判明したため)。
+// Regression test for the Escape-key cancellation path of cpp_tk::custom::simpledialog::askstring().
+// See the comment at the top of test_simpledialog_return.cpp for why this is kept in its own
+// .cpp/executable (running askstring() twice in a row within the same process was found to hang).
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 #include "cpp_tk.hpp"
@@ -9,7 +9,7 @@
 namespace tk     = cpp_tk;
 namespace custom = tk::custom;
 
-TEST_CASE("simpledialog::askstring: Escapeキーでキャンセルされる")
+TEST_CASE("simpledialog::askstring: pressing Escape cancels the dialog")
 {
     tk::Tk root;
     root.geometry("1x1-3000-3000");

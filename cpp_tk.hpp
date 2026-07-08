@@ -251,6 +251,16 @@ ErrorPolicy error_policy();
 void set_callback_exception_handler(std::function<void(const std::exception&)> handler);
 
 /**
+ * Tcl_Init()/Tk_Init()が探索するランタイムスクリプト一式(init.tcl/tk.tcl等)の格納先を明示指定する
+ * (docs/tasks.md H節参照)。システムにTcl/Tkが標準インストールされていない配布環境向けのフォールバック。
+ * 呼び出しスレッドで最初にcpp_tkのオブジェクト(Tk/Var/PhotoImage/font::Font/ttk::Style等)を構築するより
+ * 前に呼び出す必要がある(Interpreterは遅延生成の1スレッド1個のシングルトンで、この設定はInterpreter
+ * 生成時にのみ参照されるため、生成済みのInterpreterには効果がない)。空文字列を渡した項目はTcl/Tk自身の
+ * 既定探索(TCL_LIBRARY/TK_LIBRARY環境変数や実行ファイルからの相対パス等)に委ねる。
+ */
+void set_runtime_library_paths(const std::string& tcl_library, const std::string& tk_library);
+
+/**
  * Interpreterと1:1で結び付くオブジェクト(Widget/PhotoImage/font::Font/ttk::Style/Var)の共通基底。
  * 派生クラスは「自分のInterpreterポインタがどこに格納されているか」をinterp()で教えるだけで、
  * nullptrガード付きの生Tcl呼び出しcall()が使えるようになる

@@ -36,16 +36,27 @@
 ## バグ調査（起票済み・未着手）
 
 - [ ] **Linux版でCanvas::postscriptがSegFaultする**
-  `test_round5_bcd.cpp`の"Canvas::postscript: PostScriptデータを文字列で返す"がLinux CI上でSIGSEGVでクラッシュする(Windowsでは問題なくパス)。プラットフォーム固有の問題である可能性が高いが未調査。CIがこの種の失敗でハングしないよう`--timeout`は対応済み(tasks.md J節)。
+  `test_low_priority_parity_gaps.cpp`の"Canvas::postscript: PostScriptデータを文字列で返す"がLinux CI上でSIGSEGVでクラッシュする(Windowsでは問題なくパス)。プラットフォーム固有の問題である可能性が高いが未調査。CIがこの種の失敗でハングしないよう`--timeout`は対応済み(tasks.md J節)。
   詳細: tasks.md J節
 
 ---
 
-## 配布・デプロイ（起票済み・未着手）
+## 配布・デプロイ（コピー方式は2026-07-08対応済み、zipfs単一ファイル化のみ将来課題）
 
-- [ ] **Tcl/Tk本体のランタイムスクリプト一式が実行環境に無いと、cpp_tkベースのアプリが起動できない**
-  `Tcl_Init()`/`Tk_Init()`は`init.tcl`を筆頭とするTclスクリプト形式のランタイムライブラリ一式(150〜250ファイル規模)を`$tcl_library`/`$tk_library`から`source`する。これが無い環境(Tcl/Tk未インストールの一般ユーザ環境等)では起動自体ができない。現状の`cmake/FindTCL.cmake`/`FindTk.cmake`はコンパイル済みライブラリとヘッダしか探しておらず、この問題に対する対応が無い。
-  sv-ttkのTclアセット埋め込み方式(実装完了、tasks.md G節参照)とは規模・性質が異なる別問題と判断し、切り分けて起票した。PyInstaller/cx_Freeze等が採用する業界標準の解法(実行ファイルの隣にTcl/Tkのスクリプトディレクトリ一式をコピーして配布する)に倣う方向で検討中。次に設計に着手する。
+- [x] **Tcl/Tk本体のランタイムスクリプト一式が実行環境に無いと、cpp_tkベースのアプリが起動できない**
+  `cmake/CppTkRuntime.cmake`を追加し、`find_package`が検出したTcl/Tkインストールと同じ場所の`wish`を
+  使って`$tcl_library`/`$tk_library`/zipfs対応有無を検出できるようにした。`CPP_TK_PACKAGE_RUNTIME_SCRIPTS`
+  オプション(既定OFF)で実行ファイルの隣へスクリプト一式をコピーする配布方式(PyInstaller/cx_Freeze方式)、
+  および`cpp_tk::set_runtime_library_paths()`によるユーザ指定の起点パス上書きAPIを実装済み。
+  Tcl/Tk本体の自前ビルド(FetchContent等)はスコープ外と決定した(理由はtasks.md H節参照)。
+  詳細: tasks.md H節
+
+- [ ] **zipfsによるTcl/Tkランタイムの単一実行ファイル化(将来課題)**
+  Tcl 9系(または`--enable-zipfs`ビルドの8.6)であれば、コピーしたスクリプト一式をzip化して
+  実行ファイルにVFSマウントすることで単一ファイル配布が可能になる。検出自体
+  (`CPP_TK_RUNTIME_HAS_ZIPFS`)は実装済みだが、このマシンのMSYS2 Tcl/Tk 8.6.13にはzipfsが
+  一切含まれておらず(`tcl.h`にZipfs関連のC API宣言なし)実行時コードを検証できないため、
+  zip化+VFSマウントの実装自体は見送った。zipfs対応のTcl/Tkが実機検証可能になり次第、着手する。
   詳細: tasks.md H節
 
 ---

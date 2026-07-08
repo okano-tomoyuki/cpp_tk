@@ -1,6 +1,6 @@
-// アプリケーション/ミスクレベルのネイティブTclコマンド(第4回棚卸し)の回帰テスト:
+// Regression tests for application/misc-level native Tcl commands (4th inventory pass):
 // windowingsystem/bell/wait_visibility/scaling/bindtags/image_names/image_types/
-// PhotoImage・BitmapImage::destroy()
+// PhotoImage & BitmapImage::destroy()
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 #include "cpp_tk.hpp"
@@ -10,7 +10,7 @@
 
 namespace tk = cpp_tk;
 
-TEST_CASE("windowingsystem: x11/win32/aquaのいずれかを返す")
+TEST_CASE("windowingsystem: returns one of x11/win32/aqua")
 {
     tk::Tk root;
     root.withdraw();
@@ -19,28 +19,29 @@ TEST_CASE("windowingsystem: x11/win32/aquaのいずれかを返す")
     CHECK((ws == "x11" || ws == "win32" || ws == "aqua"));
 }
 
-TEST_CASE("bell: 例外にならない")
+TEST_CASE("bell: does not throw")
 {
     tk::Tk root;
     root.withdraw();
     CHECK_NOTHROW(root.bell());
 }
 
-TEST_CASE("wait_visibility: 戻った時点でmappedになっている")
+TEST_CASE("wait_visibility: the window is mapped by the time it returns")
 {
     tk::Tk root;
-    // 先行するTEST_CASEが既にmapped状態にしている可能性があり、その場合deiconify()単体では
-    // 状態変化(Visibilityイベント)が発生せずwait_visibility()がハングする。withdraw()で
-    // 一旦確実にunmapしてからdeiconify()することで、必ず変化を起こす。
+    // An earlier TEST_CASE may have already left the window mapped, in which case deiconify()
+    // alone produces no state change (no Visibility event) and wait_visibility() would hang.
+    // withdraw() first guarantees an actual unmapped state before deiconify() re-maps it, so a
+    // change always occurs.
     root.withdraw();
     root.deiconify();
-    root.geometry("50x50-3000-3000"); // withdrawだとmappedにならないため画面外配置にする
+    root.geometry("50x50-3000-3000"); // withdraw alone would not become mapped, so place off-screen instead
 
     root.wait_visibility();
     CHECK(root.winfo_ismapped());
 }
 
-TEST_CASE("scaling: getter/setterが機能する")
+TEST_CASE("scaling: getter/setter work correctly")
 {
     tk::Tk root;
     root.withdraw();
@@ -49,14 +50,14 @@ TEST_CASE("scaling: getter/setterが機能する")
     CHECK(original > 0);
 
     root.scaling(1.5);
-    // Tk内部でピクセル単位への丸め込みが入るため厳密な浮動小数点一致は期待できず、
-    // 誤差を広めに許容する(cpp_tkの不具合ではなくTk自身の丸め仕様)。
+    // Tk rounds internally to whole pixels, so exact floating-point equality cannot be expected;
+    // allow a generous tolerance (this is Tk's own rounding behavior, not a cpp_tk defect).
     CHECK(root.scaling() == doctest::Approx(1.5).epsilon(0.01));
 
-    root.scaling(original); // 他のテストに影響しないよう元に戻す
+    root.scaling(original); // restore, so as not to affect other tests
 }
 
-TEST_CASE("bindtags: getter/setterが機能する")
+TEST_CASE("bindtags: getter/setter work correctly")
 {
     tk::Tk root;
     root.withdraw();
@@ -64,14 +65,14 @@ TEST_CASE("bindtags: getter/setterが機能する")
     btn.pack();
 
     auto tags = btn.bindtags();
-    CHECK(tags.size() == 4); // [self, class, toplevel, all] が既定
+    CHECK(tags.size() == 4); // default is [self, class, toplevel, all]
 
     std::vector<std::string> custom_tags = {btn.full_name(), "all"};
     btn.bindtags(custom_tags);
     CHECK(btn.bindtags() == custom_tags);
 }
 
-TEST_CASE("image_names/image_types: 生成した画像が一覧に現れ、destroy()で消える")
+TEST_CASE("image_names/image_types: a created image appears in the listing and disappears after destroy()")
 {
     tk::Tk root;
     root.withdraw();

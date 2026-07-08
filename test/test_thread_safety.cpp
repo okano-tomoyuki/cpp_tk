@@ -1,4 +1,4 @@
-// クロススレッドアクセス検知(段階1)とInterpreterClient::post()(段階2)の回帰テスト。
+// Regression tests for cross-thread access detection (phase 1) and InterpreterClient::post() (phase 2).
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 #include "cpp_tk.hpp"
@@ -10,7 +10,7 @@
 
 namespace tk = cpp_tk;
 
-TEST_CASE("post(): ワーカースレッドからのpost()がmainloop(vwait forever)を安全に起こしジョブを実行する")
+TEST_CASE("post(): a worker thread's post() safely wakes mainloop (vwait forever) and runs the job")
 {
     tk::set_error_policy(tk::ErrorPolicy::DEFAULT);
     tk::Tk root;
@@ -23,12 +23,12 @@ TEST_CASE("post(): ワーカースレッドからのpost()がmainloop(vwait fore
 
     std::thread worker([&]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        // ワーカースレッドから直接widgetを触るのは禁止(クロススレッドでError)だが、
-        // post()経由なら安全にメインスレッドで実行させられる。
+        // Touching a widget directly from a worker thread is forbidden (throws Error for
+        // cross-thread access), but post() lets it run safely on the main thread instead.
         label.post([&]() {
             job_ran = true;
             label.text("updated from worker thread");
-            root.quit(); // mainloop(vwait forever)を終了させる
+            root.quit(); // stop mainloop (vwait forever)
         });
     });
 
@@ -39,7 +39,7 @@ TEST_CASE("post(): ワーカースレッドからのpost()がmainloop(vwait fore
     CHECK(label.cget("text") == "updated from worker thread");
 }
 
-TEST_CASE("post(): 複数ワーカースレッドから安全に投稿できる")
+TEST_CASE("post(): multiple worker threads can post safely")
 {
     tk::set_error_policy(tk::ErrorPolicy::DEFAULT);
     tk::Tk root;

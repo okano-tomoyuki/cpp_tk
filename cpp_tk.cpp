@@ -151,6 +151,15 @@ void set_callback_exception_handler(std::function<void(const std::exception&)> h
     g_callback_exception_handler = std::move(handler);
 }
 
+static std::string g_tcl_library_override;
+static std::string g_tk_library_override;
+
+void set_runtime_library_paths(const std::string& tcl_library, const std::string& tk_library)
+{
+    g_tcl_library_override = tcl_library;
+    g_tk_library_override  = tk_library;
+}
+
 // register_*_callback/trace_varのトランポリン(TclのCコールスタックから直接呼ばれる)専用。
 // コールバック本体は必ずこれ経由で呼び出し、C++例外がTcl側のCフレームへ伝播しないようにする。
 // ハンドラ自体が例外を投げても、ここで握りつぶしてTcl側には一切伝播させない。
@@ -181,8 +190,24 @@ public:
         , owner_tcl_thread_(Tcl_GetCurrentThread())
     {
         interp_ = Tcl_CreateInterp();
-        Tcl_Init(interp_);
-        Tk_Init(interp_);
+        if (!g_tcl_library_override.empty())
+            Tcl_SetVar(interp_, "tcl_library", g_tcl_library_override.c_str(), TCL_GLOBAL_ONLY);
+        if (Tcl_Init(interp_) != TCL_OK)
+        {
+            std::string message = "Tcl_Init failed: " + std::string(Tcl_GetStringResult(interp_));
+            Tcl_DeleteInterp(interp_);
+            interp_ = nullptr;
+            throw Error(message);
+        }
+        if (!g_tk_library_override.empty())
+            Tcl_SetVar(interp_, "tk_library", g_tk_library_override.c_str(), TCL_GLOBAL_ONLY);
+        if (Tk_Init(interp_) != TCL_OK)
+        {
+            std::string message = "Tk_Init failed: " + std::string(Tcl_GetStringResult(interp_));
+            Tcl_DeleteInterp(interp_);
+            interp_ = nullptr;
+            throw Error(message);
+        }
     }
 
     ~Interpreter()

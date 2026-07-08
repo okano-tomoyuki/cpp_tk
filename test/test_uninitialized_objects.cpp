@@ -1,13 +1,13 @@
-// current_interp()の遅延生成の回帰テスト。他のテストファイルから分離している理由:
-// このプロセスでは*一度もtk::Tkを構築していない*状態を保つ必要があるため
-// (一度でもtk::Tkを構築すると、そのInterpreterがプロセス内に残り続け、以降は
-// 「まだ何も構築していない」状態を再現できなくなる)。
+// Regression tests for the lazy creation of current_interp(). Kept separate from the other test
+// files because this process must never construct a tk::Tk before these run (once a tk::Tk is
+// constructed, its Interpreter stays alive for the rest of the process, making it impossible to
+// reproduce the "nothing constructed yet" state).
 //
-// Var/PhotoImage/font::Font/ttk::Styleはparentを取らず、構築時にcurrent_interp()へ
-// 束縛するが、current_interp()は当該スレッドにInterpreterが無ければその場で生成するため、
-// tk::Tkを一度も構築していなくてもこれらのオブジェクトは常に実体化される
-// (docs/tasks.md参照)。一方、Widget派生クラスは実の親を渡さない限りプレースホルダの
-// ままであり、この挙動には影響されない。
+// Var/PhotoImage/font::Font/ttk::Style no longer take a parent; instead, at construction they
+// bind to current_interp(), which lazily creates an Interpreter for the calling thread if none
+// exists yet. So these objects always become real even if a tk::Tk was never constructed (see
+// docs/tasks.md). Widget-derived classes, on the other hand, remain a placeholder unless a real
+// parent is passed, and are unaffected by this lazy-init behavior.
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 #include "cpp_tk.hpp"
@@ -15,7 +15,7 @@
 namespace tk  = cpp_tk;
 namespace ttk = tk::ttk;
 
-TEST_CASE("親を渡さないWidgetはtk::Tkが一度も無くてもプレースホルダのままcall()が失敗する")
+TEST_CASE("A Widget constructed without a parent stays a placeholder and call() fails, even with no tk::Tk ever constructed")
 {
     tk::set_error_policy(tk::ErrorPolicy::DEFAULT);
 
@@ -26,7 +26,7 @@ TEST_CASE("親を渡さないWidgetはtk::Tkが一度も無くてもプレース
     CHECK(ret.empty());
 }
 
-TEST_CASE("Var/PhotoImage/font::Font/ttk::Styleはtk::Tkが一度も無くてもcurrent_interp()経由で自動的に実体化される")
+TEST_CASE("Var/PhotoImage/font::Font/ttk::Style become real automatically via current_interp(), even with no tk::Tk ever constructed")
 {
     tk::set_error_policy(tk::ErrorPolicy::DEFAULT);
 

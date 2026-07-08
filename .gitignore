@@ -1,5 +1,9 @@
 build/*
 
+# 実行ファイル・CPP_TK_PACKAGE_RUNTIME_SCRIPTSでコピーされるTcl/Tkランタイムスクリプト一式が
+# 出力される場所(docs/tasks.md H節参照)
+/bin/*
+
 # Prerequisites
 *.d
 

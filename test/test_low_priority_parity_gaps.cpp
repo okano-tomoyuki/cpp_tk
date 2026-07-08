@@ -1,7 +1,8 @@
-// 第5回棚卸し(docs/tasks.md A節参照)のうちB/C/D区分の回帰テスト:
-// PhotoImage/BitmapImageの画像操作系、cpp_tk::custom::simpledialog、ttk::Styleの高度なテーマ機能、
-// Text::bbox/xview/xscrollcommand、font::families/names・Font::copy、Canvas::postscript、
-// Widgetのgrab_current/grab_status・winfo_id系・option_add/get・tk_focusNext/Prev、Tk/Toplevelのiconname
+// Regression tests for categories B/C/D of the 5th inventory pass (see docs/tasks.md section A):
+// PhotoImage/BitmapImage image manipulation, cpp_tk::custom::simpledialog, ttk::Style's
+// advanced theming features, Text::bbox/xview/xscrollcommand, font::families/names & Font::copy,
+// Canvas::postscript, Widget's grab_current/grab_status & winfo_id family & option_add/get &
+// tk_focusNext/Prev, and Tk/Toplevel's iconname.
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 #include "cpp_tk.hpp"
@@ -11,9 +12,9 @@ namespace tk     = cpp_tk;
 namespace ttk    = tk::ttk;
 namespace custom = tk::custom;
 
-// ---- B: PhotoImage/BitmapImage 画像操作系 ----
+// ---- B: PhotoImage/BitmapImage image manipulation ----
 
-TEST_CASE("PhotoImage: put/get/width/height/blankが機能する")
+TEST_CASE("PhotoImage: put/get/width/height/blank work")
 {
     tk::Tk root;
     root.withdraw();
@@ -24,12 +25,12 @@ TEST_CASE("PhotoImage: put/get/width/height/blankが機能する")
     CHECK(img.height() == 2);
 
     auto pixel = img.get(0, 0);
-    CHECK_FALSE(pixel.empty()); // "255 0 0"のようなrgb文字列
+    CHECK_FALSE(pixel.empty()); // an rgb string like "255 0 0"
 
     CHECK_NOTHROW(img.blank());
 }
 
-TEST_CASE("PhotoImage: copy/zoom/subsampleが新規PhotoImageを返す")
+TEST_CASE("PhotoImage: copy/zoom/subsample return a new PhotoImage")
 {
     tk::Tk root;
     root.withdraw();
@@ -57,7 +58,7 @@ TEST_CASE("PhotoImage: copy/zoom/subsampleが新規PhotoImageを返す")
     CHECK(dest.width() == 4);
 }
 
-TEST_CASE("BitmapImage: width/heightが機能する")
+TEST_CASE("BitmapImage: width/height work")
 {
     tk::Tk root;
     root.withdraw();
@@ -73,9 +74,9 @@ TEST_CASE("BitmapImage: width/heightが機能する")
     CHECK(img.height() == 8);
 }
 
-// ---- B: ttk::Style 高度なテーマ機能 ----
+// ---- B: ttk::Style advanced theming features ----
 
-TEST_CASE("ttk::Style: layout()のgetter/setterが機能する")
+TEST_CASE("ttk::Style: layout()'s getter/setter work")
 {
     tk::Tk root;
     root.withdraw();
@@ -84,11 +85,11 @@ TEST_CASE("ttk::Style: layout()のgetter/setterが機能する")
     auto original_layout = style.layout("TButton");
     CHECK_FALSE(original_layout.empty());
 
-    // 取得したレイアウトをそのまま設定し直しても例外にならないこと(往復確認)。
+    // Setting the retrieved layout back as-is should not throw (round-trip check).
     CHECK_NOTHROW(style.layout("TButton", original_layout));
 }
 
-TEST_CASE("ttk::Style: theme_create()で新規テーマを定義できる")
+TEST_CASE("ttk::Style: theme_create() can define a new theme")
 {
     tk::Tk root;
     root.withdraw();
@@ -104,13 +105,14 @@ TEST_CASE("ttk::Style: theme_create()で新規テーマを定義できる")
     CHECK(found);
 }
 
-// simpledialogの回帰テストはtest_simpledialog_return.cpp/test_simpledialog_escape.cppに分離している
-// (askstring()はgrab_set()を伴うモーダルダイアログを生成するため、同一プロセス内で2回連続実行すると
-// ハングする現象が判明したため、docs/tasks.md 第5回棚卸しの追記を参照)。
+// Regression tests for simpledialog live in test_simpledialog_return.cpp /
+// test_simpledialog_escape.cpp instead (askstring() creates a modal dialog with grab_set(), and
+// running it twice in a row within the same process was found to hang - see the addendum to the
+// 5th inventory pass in docs/tasks.md).
 
 // ---- C: Text::bbox/xview/xscrollcommand ----
 
-TEST_CASE("Text: bbox/xview/xscrollcommandが機能する")
+TEST_CASE("Text: bbox/xview/xscrollcommand work")
 {
     tk::Tk root;
     root.withdraw();
@@ -134,7 +136,7 @@ TEST_CASE("Text: bbox/xview/xscrollcommandが機能する")
 
 // ---- C: font::families()/names(), Font::copy() ----
 
-TEST_CASE("font::families/names: 空でない一覧を返す")
+TEST_CASE("font::families/names: return non-empty lists")
 {
     tk::Tk root;
     root.withdraw();
@@ -146,7 +148,7 @@ TEST_CASE("font::families/names: 空でない一覧を返す")
     CHECK_FALSE(names.empty());
 }
 
-TEST_CASE("Font::copy: 設定を引き継いだ複製を作る")
+TEST_CASE("Font::copy: makes a copy that carries over the configuration")
 {
     tk::Tk root;
     root.withdraw();
@@ -161,7 +163,7 @@ TEST_CASE("Font::copy: 設定を引き継いだ複製を作る")
 
 // ---- C: Canvas::postscript ----
 
-TEST_CASE("Canvas::postscript: PostScriptデータを文字列で返す")
+TEST_CASE("Canvas::postscript: returns PostScript data as a string")
 {
     tk::Tk root;
     root.withdraw();
@@ -175,14 +177,15 @@ TEST_CASE("Canvas::postscript: PostScriptデータを文字列で返す")
     CHECK(ps.find("%!PS") != std::string::npos);
 }
 
-// ---- D: grab_current/grab_status, winfo_id系, option_add/get, tk_focusNext/Prev, iconname ----
+// ---- D: grab_current/grab_status, winfo_id family, option_add/get, tk_focusNext/Prev, iconname ----
 
-TEST_CASE("Widget: grab_current/grab_statusが機能する")
+TEST_CASE("Widget: grab_current/grab_status work")
 {
     tk::Tk root;
-    // 先行するTEST_CASEが既にmapped状態にしている可能性があり、その場合deiconify()単体では
-    // 状態変化(Visibilityイベント)が発生せずwait_visibility()がハングする。withdraw()で
-    // 一旦確実にunmapしてからdeiconify()することで、必ず変化を起こす。
+    // An earlier TEST_CASE may have already left the window mapped, in which case deiconify()
+    // alone produces no state change (no Visibility event) and wait_visibility() would hang.
+    // withdraw() first guarantees an actual unmapped state before deiconify() re-maps it, so a
+    // change always occurs.
     root.withdraw();
     root.deiconify();
     root.geometry("50x50-3000-3000");
@@ -196,12 +199,13 @@ TEST_CASE("Widget: grab_current/grab_statusが機能する")
     CHECK(root.grab_status() == "none");
 }
 
-TEST_CASE("Widget: winfo_id/name/parent/depth/geometryが機能する")
+TEST_CASE("Widget: winfo_id/name/parent/depth/geometry work")
 {
     tk::Tk root;
-    // 先行するTEST_CASEが既にmapped状態にしている可能性があり、その場合deiconify()単体では
-    // 状態変化(Visibilityイベント)が発生せずwait_visibility()がハングする。withdraw()で
-    // 一旦確実にunmapしてからdeiconify()することで、必ず変化を起こす。
+    // An earlier TEST_CASE may have already left the window mapped, in which case deiconify()
+    // alone produces no state change (no Visibility event) and wait_visibility() would hang.
+    // withdraw() first guarantees an actual unmapped state before deiconify() re-maps it, so a
+    // change always occurs.
     root.withdraw();
     root.deiconify();
     root.geometry("50x50-3000-3000");
@@ -218,7 +222,7 @@ TEST_CASE("Widget: winfo_id/name/parent/depth/geometryが機能する")
     CHECK_FALSE(root.winfo_geometry().empty());
 }
 
-TEST_CASE("Widget: option_add/option_getが機能する")
+TEST_CASE("Widget: option_add/option_get work")
 {
     tk::Tk root;
     root.withdraw();
@@ -229,7 +233,7 @@ TEST_CASE("Widget: option_add/option_getが機能する")
     CHECK(value == "#123456");
 }
 
-TEST_CASE("Widget: tk_focusNext/tk_focusPrevが機能する")
+TEST_CASE("Widget: tk_focusNext/tk_focusPrev work")
 {
     tk::Tk root;
     root.geometry("50x50-3000-3000");
@@ -247,7 +251,7 @@ TEST_CASE("Widget: tk_focusNext/tk_focusPrevが機能する")
     CHECK(prev.full_name() == e1.full_name());
 }
 
-TEST_CASE("Tk/Toplevel: iconnameのgetter/setterが機能する")
+TEST_CASE("Tk/Toplevel: iconname's getter/setter work")
 {
     tk::Tk root;
     root.withdraw();

@@ -1,5 +1,5 @@
-// docs/tasks.md A節 第2回棚卸し(Widget共通/Canvas/Text/Entry/Scale/Spinbox/
-// ttk::Notebook/ttk::Treeview/Toplevel・Tk)の回帰テスト。
+// Regression tests for docs/tasks.md section A, 2nd inventory pass (Widget common
+// functionality/Canvas/Text/Entry/Scale/Spinbox/ttk::Notebook/ttk::Treeview/Toplevel & Tk).
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 #include "cpp_tk.hpp"
@@ -7,10 +7,10 @@
 namespace tk  = cpp_tk;
 namespace ttk = tk::ttk;
 
-TEST_CASE("Widget: bind_all/unbind_all/bind_classがイベントを配送する")
+TEST_CASE("Widget: bind_all/unbind_all/bind_class deliver events")
 {
     tk::Tk root;
-    // event generateによる配送はwithdraw中は行われないため、画面外配置でmapped状態を保つ。
+    // event_generate does not deliver while withdrawn, so keep the window mapped by placing it off-screen.
     root.geometry("1x1-3000-3000");
     tk::Frame f(root);
     f.pack();
@@ -39,8 +39,8 @@ TEST_CASE("Widget: grid_slaves/pack_slaves/place_slaves + grid_info/pack_info/pl
     tk::Tk root;
     root.withdraw();
 
-    // Tkの制約により、同一親の直接の子はpack/gridを混在できない(placeは独立しており併用可)ため、
-    // grid用とpack用で別々の親フレームを用意する。
+    // Tk does not allow mixing pack/grid among direct children of the same parent (place is
+    // independent and can coexist with either), so use separate parent frames for grid and pack.
     tk::Frame grid_parent(root);
     tk::Frame pack_parent(root);
     tk::Label gridded(grid_parent);
@@ -70,7 +70,7 @@ TEST_CASE("Widget: grid_slaves/pack_slaves/place_slaves + grid_info/pack_info/pl
     CHECK(pinfo.at("x") == "5");
     CHECK(pinfo.at("y") == "5");
 
-    CHECK(packed.grid_info().empty()); // packで管理されておりgridではない
+    CHECK(packed.grid_info().empty()); // managed by pack, not grid
 }
 
 TEST_CASE("Widget: nametowidget/winfo_reqwidth/winfo_reqheight")
@@ -88,7 +88,7 @@ TEST_CASE("Widget: nametowidget/winfo_reqwidth/winfo_reqheight")
 
     auto resolved = root.nametowidget(btn.full_name());
     CHECK(resolved.full_name() == btn.full_name());
-    CHECK(resolved.cget("text") == "hello"); // Widgetハンドルとして共通操作ができる
+    CHECK(resolved.cget("text") == "hello"); // usable as a generic Widget handle
 }
 
 TEST_CASE("Canvas: tag_raise/tag_lower/find_all/find_withtag/canvasx/canvasy/create_bitmap")
@@ -144,7 +144,7 @@ TEST_CASE("Text: index/tag_names/tag_ranges/tag_lower/tag_raise/tag_delete/edit_
     CHECK_NOTHROW(text.tag_lower("greeting"));
     CHECK_NOTHROW(text.tag_delete("greeting"));
 
-    // 冒頭のinsert("1.0", ...)自体が編集操作なので、ここで一旦falseにリセットしてから検証する。
+    // The initial insert("1.0", ...) is itself an edit operation, so reset the modified flag to false first.
     text.edit_modified(false);
     CHECK_FALSE(text.edit_modified());
     text.insert("end", "!");
@@ -172,7 +172,7 @@ TEST_CASE("Entry: select_range/selection_clear/select_present")
     CHECK_FALSE(entry.select_present());
 }
 
-TEST_CASE("Scale(classic/ttk): get/set")
+TEST_CASE("Scale (classic/ttk): get/set")
 {
     tk::Tk root;
     root.withdraw();
@@ -188,7 +188,7 @@ TEST_CASE("Scale(classic/ttk): get/set")
     CHECK(tscale.get() == doctest::Approx(24.0));
 }
 
-TEST_CASE("Spinbox(classic/ttk): get()")
+TEST_CASE("Spinbox (classic/ttk): get()")
 {
     tk::Tk root;
     root.withdraw();
