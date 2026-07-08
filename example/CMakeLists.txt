@@ -1,12 +1,8 @@
 foreach(src_name 
     sample1 
-    sample2 
     calc 
     eyes 
     clock 
-    scrolled_text
-    # photo_image
-    tree_view
     multithread_text
     calendar_demo
 )
