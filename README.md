@@ -67,26 +67,27 @@ cmake --build build
 
 `example/`配下のサンプルと`test/`配下のテストは、上記コマンドで`build`と同時にまとめてビルドされます
 （`example/`はルートの`CMakeLists.txt`から`add_subdirectory`される前提のため、`example/`単体では
-ビルドできません）。実行ファイルは全て`bin/`配下に生成されます(`CPP_TK_PACKAGE_RUNTIME_SCRIPTS`
-有効時はTcl/Tkランタイムスクリプト一式も同じ`bin/`に並びます。[配布](#-配布tcltkランタイムスクリプトの同梱)参照)。
+ビルドできません）。実行ファイルは`bin/example/`・`bin/test/`にそれぞれ分けて生成されます
+(`CPP_TK_PACKAGE_RUNTIME_SCRIPTS`有効時はTcl/Tkランタイムスクリプト一式も`bin/example/`に並びます。
+[配布](#-配布tcltkランタイムスクリプトの同梱)参照)。
 
 ### サンプル実行
 
 ```bash
-./bin/sample1
+./bin/example/sample1
 ```
 
 Sun Valley ttk themeの見た目を確認したい場合は`example/theme/`のデモを実行してください
 （Toggle themeボタンでdark/lightを切り替えられます）。
 
 ```bash
-./bin/sv_ttk_demo
+./bin/example/sv_ttk_demo
 ```
 
 `Calendar`ウィジェットのデモ:
 
 ```bash
-./bin/calendar_demo
+./bin/example/calendar_demo
 ```
 
 ## 🛠 使用例
@@ -200,14 +201,17 @@ int main()
 インストールの一般ユーザ環境等)向けに、以下の2つの手段を用意しています(詳細はdocs/tasks.md H節参照)。
 
 - **`CPP_TK_PACKAGE_RUNTIME_SCRIPTS`ビルドオプション**(既定ON): `find_package`が検出した
-  Tcl/Tkインストールからスクリプトディレクトリ一式を検出し、実行ファイルと同じ`bin/`配下へ
-  コピーします(PyInstaller/cx_Freeze等が採用する業界標準の配布方式)。無効にする場合は
-  `-DCPP_TK_PACKAGE_RUNTIME_SCRIPTS=OFF`を指定してください。
+  Tcl/Tkインストールからスクリプトディレクトリ一式を検出し、example実行ファイルと同じ
+  `bin/example/`配下へコピーします(PyInstaller/cx_Freeze等が採用する業界標準の配布方式)。
+  無効にする場合は`-DCPP_TK_PACKAGE_RUNTIME_SCRIPTS=OFF`を指定してください。
   ```
   bin/
-  ├── sample1.exe
-  ├── tcl8.6/
-  └── tk8.6/
+  ├── example/
+  │   ├── sample1.exe
+  │   ├── tcl8.6/
+  │   └── tk8.6/
+  └── test/
+      └── ...
   ```
 - **`cpp_tk::set_runtime_library_paths()`**: 配布先での格納場所をアプリ側で明示したい場合の
   オーバーライドAPIです。最初にcpp_tkのオブジェクトを構築するより前に呼び出します。
@@ -218,6 +222,21 @@ int main()
 
 Tcl 9系等のzipfs(仮想ファイルシステム)に対応したTcl/Tkであれば単一実行ファイル化も可能ですが、
 現時点では検出(`CPP_TK_RUNTIME_HAS_ZIPFS`)のみ実装しており、実際のVFS埋め込みは将来対応です。
+
+### 他プロジェクトのサブディレクトリとして組み込む
+
+自分のプロジェクトの`third_party/cpp_tk`等に配置し、`add_subdirectory(third_party/cpp_tk)`する形での
+利用を想定しています。cpp_tk自身の出力先(`bin/`/`lib/`)・C++標準・サニタイザフラグは全てtarget単位の
+プロパティとして適用されるため、`CMAKE_CXX_STANDARD`や`CMAKE_RUNTIME_OUTPUT_DIRECTORY`等のディレクトリ
+スコープの変数を介して親プロジェクト自身の設定に影響することはありません。
+
+既定では`example/`配下のサンプルと`ctest`用の全テスト(doctestベースの回帰テスト一式)もあわせて
+ビルドされますが、サブディレクトリとして組み込む場合はどちらも不要なことが多いため、
+以下のオプションで個別にスキップできます。
+
+```bash
+cmake -S . -B build -DCPP_TK_BUILD_EXAMPLES=OFF -DCPP_TK_BUILD_TESTS=OFF
+```
 
 ## ⚠️ 制限事項
 

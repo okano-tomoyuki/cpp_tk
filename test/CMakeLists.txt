@@ -36,6 +36,8 @@ foreach(test_name
             ${PROJECT_NAME}
     )
 
+    cpp_tk_configure_target(${test_name} test)
+
     add_test(
         NAME ${test_name}
         COMMAND ${test_name}
@@ -79,6 +81,8 @@ target_link_libraries(test_runtime_library_override
     PRIVATE
         ${PROJECT_NAME}
 )
+
+cpp_tk_configure_target(test_runtime_library_override test)
 
 add_test(
     NAME test_runtime_library_override

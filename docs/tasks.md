@@ -642,3 +642,39 @@ Linux版`test_low_priority_parity_gaps.cpp`の"Canvas::postscript: PostScriptデ
 2. **日本語コメント・TEST_CASE文字列・message()文字列の英語化**: `test/*.cpp`全18ファイル、ルート/`test/`/`example/`配下の全`CMakeLists.txt`、`cmake/*.cmake`(`CppTkRuntime.cmake`)を対象に、コメント・doctestの`TEST_CASE`名・`WARN`メッセージ・CMakeの`message()`文字列を全て英語に書き換えた(コードロジック自体は変更していない)。ベンダリング済みの`test/doctest.h`(MITライセンスの第三者コード)は対象外。
    - 翻訳後、`grep -P '[^\x00-\x7F]'`で全対象ファイルに非ASCII文字が残っていないことを機械的に確認した。
 3. クリーンビルド(`rm -rf build && cmake -S . -B build && cmake --build build`)・`ctest --output-on-failure`を実施し、全26テストがgreenであることを確認した。CMake configureのログ・doctestのテストケース名出力(`-s`オプションで確認)がいずれも英語のみで表示され、文字化けの原因となる非ASCII文字が出力に含まれないことも確認済み。
+
+### 追加の訂正（2026-07-08、後続作業中に発覚）
+上記3.の確認に使った`grep -P '[^\x00-\x7F]'`は、この開発環境のロケール設定下で`-P`(PCRE)オプションが「unibyte/UTF-8ロケールのみ対応」というエラーを出して**異常終了**するケースがあり、シェルの`if grep ...; then`がその異常終了(終了コード2)を「非ASCII無し」と誤判定してしまう欠陥があった。後続の別作業中にこれに気づき、`LC_ALL=C grep '[^ -~\t]'`(ロケールに依存せずバイト単位で判定できる方式)で全対象ファイルを再スキャンした結果、**`test/compile_check/`配下の10ファイル(`CMakeLists.txt`と`should_compile`/`should_fail`配下の.cpp 9本)が翻訳されないまま見逃されていた**ことが判明した。該当ファイルは全て英語化し、再度`LC_ALL=C`版のスキャンで対象範囲(`test/*.cpp`・全`CMakeLists.txt`・`cmake/*.cmake`)に非ASCII文字が残っていないことを確認済み(`example/*.cpp`は元々対象外のため意図的に未対応)。再ビルド・全26テストがgreenであることも再確認した。
+
+---
+
+## M. サブディレクトリ経由での利用を想定したCMakeLists.txtの配布容易性向上（2026-07-08対応済み）
+
+### 経緯
+ユーザから、cpp_tkを他プロジェクトのサブディレクトリに配置して`add_subdirectory()`経由で利用することを想定し、(1)現行の`CMakeLists.txt`が暗黙的にグローバル状態(ディレクトリスコープの`CMAKE_CXX_STANDARD`/`CMAKE_RUNTIME_OUTPUT_DIRECTORY`/`CMAKE_LIBRARY_OUTPUT_DIRECTORY`/`CMAKE_ARCHIVE_OUTPUT_DIRECTORY`/`CMAKE_CXX_FLAGS`/`CMAKE_EXE_LINKER_FLAGS`を`set()`で変更)を多用している点、(2)テストコードのビルドが常に実行され制御できない点、の2点を改善してほしいという要望があった。
+
+### 技術的な前提の確認
+実装前に、CMakeのディレクトリスコープの挙動を確認した。**`set(VAR value)`(`CACHE`も`PARENT_SCOPE`も無し)は、`add_subdirectory()`で処理される側のディレクトリスコープにのみ影響し、呼び出し元(親)のディレクトリスコープには一切伝播しない**、というのがCMakeの基本仕様である。そのため、現行の`CMakeLists.txt`の`set()`群が、cpp_tkを`add_subdirectory()`する親プロジェクト自身のターゲット・設定を直接壊す、ということは技術的には起きない。ただし、これは「たまたま安全」なだけで、以下の理由から target(ターゲット)単位のプロパティに置き換える方が明確に望ましいと判断した:
+- ディレクトリスコープの変数に依存する設計は、暗黙的で追いにくく、`CMAKE_CXX_FLAGS`等の「そのスコープ以下の全ターゲットに効く」という性質は、意図の分かりにくさの温床になる。
+- target単位のプロパティであれば、親プロジェクトの構成に関わらず「cpp_tk自身のターゲットにだけ確実に効く」ことが構造的に保証され、ディレクトリスコープの挙動を正しく理解しているかどうかに依存しない。
+
+### 実装内容
+1. **出力ディレクトリのtarget化**: `set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ...)`等のディレクトリスコープ変数を廃止し、`cpp_tk_configure_target(target)`という関数を新設。`set_target_properties(target PROPERTIES RUNTIME_OUTPUT_DIRECTORY/LIBRARY_OUTPUT_DIRECTORY/ARCHIVE_OUTPUT_DIRECTORY ...)`をtarget単位で適用する。出力先のパスは`PROJECT_SOURCE_DIR`ではなく`cpp_tk_SOURCE_DIR`(project(cpp_tk ...)が生成する専用変数)から組み立て、万一将来的にネストしたproject()呼び出しがあってもcpp_tk自身のルートを指し続けるようにした。cpp_tkライブラリ本体・`example/`配下の全実行ファイル・`test/`配下の全実行ファイルそれぞれの`add_executable`/`add_library`直後でこの関数を呼び出す形にした。**出力ディレクトリ構成自体(`bin/`に実行ファイル、`lib/`にライブラリ)は変更していない。**
+2. **C++標準のtarget化**: `set(CMAKE_CXX_STANDARD 11)`/`CMAKE_CXX_STANDARD_REQUIRED`を廃止し、`target_compile_features(cpp_tk PUBLIC cxx_std_11)`に置き換えた。`PUBLIC`のため、`cpp_tk`をリンクする側(example/test含む)はC++11要求が`target_link_libraries`経由で自動伝播し、各ターゲットで個別に指定する必要がない。
+3. **サニタイザフラグのtarget化**: `CPP_TK_ENABLE_SANITIZERS`時の`CMAKE_CXX_FLAGS`/`CMAKE_EXE_LINKER_FLAGS`への追記を廃止し、`cpp_tk_configure_target()`内で`target_compile_options(target PRIVATE -fsanitize=...)`と`set_target_properties(target PROPERTIES LINK_FLAGS "...")`をtarget単位で適用するよう変更した(`target_link_options`はCMake 3.13以降が必要なため、現状の`cmake_minimum_required(VERSION 3.10)`を維持できる`LINK_FLAGS`プロパティを使用した)。
+4. **テストビルドのオプション化**: `option(CPP_TK_BUILD_TESTS "Build cpp_tk's own test suite" ON)`を新設し、`enable_testing()`/`add_subdirectory(test)`をこのオプションでガードした。既定はON(スタンドアロンビルドの既存動作を変えない)で、`-DCPP_TK_BUILD_TESTS=OFF`で完全にスキップできる(doctest/Tcl-Tk依存のテスト一式が一切構成されない)。
+
+### 検証
+- スタンドアロンビルド(`cmake -S . -B build && cmake --build build && ctest`)で、既存の`bin/`・`lib/`構成が変わらず、全26テストがgreenであることを確認した。
+- `-DCPP_TK_BUILD_TESTS=OFF`で`test/`サブディレクトリ自体が一切コンフィグレーションされない(cmakeのビルドファイル生成対象に含まれない)ことを確認した。
+- `-DCPP_TK_ENABLE_SANITIZERS=ON`のビルドで、実際にリンクコマンドへ`-fsanitize=address,undefined`が渡っていることを確認した(このマシンではMSYS2のmingw-w64 GCCがサニタイザランタイム`libasan`/`libubsan`を同梱していないためリンク自体は失敗するが、これは本リファクタリング以前から既知の環境制約であり、フラグの伝播自体は正しく機能していることを確認できた)。
+- **実際にサブディレクトリとして利用するシナリオを模した検証**: `C++17`かつ独自の`CMAKE_RUNTIME_OUTPUT_DIRECTORY`を設定した最小限の親プロジェクト(スクラッチ、`add_subdirectory(cpp_tk)`経由でcpp_tkを取り込む)を実際に構築・ビルドし、(a)親プロジェクト自身の実行ファイルが親自身の出力ディレクトリに生成されること、(b)親プロジェクトのターゲットがC++17機能(`std::optional`、構造化束縛)を問題なくコンパイルできること(cpp_tk側のC++11要求に引きずられないこと)、(c)cpp_tk自身のexample群はcpp_tk自身の`bin/`に生成されること、を実機で確認した。
+
+### 追記（2026-07-08、同日中に追加対応）
+ユーザから追加で2点要望があった: (1) `example/`も`test/`同様にビルドを制御したい、(2) `bin/`配下でexampleとtestのフォルダを分けたい。
+
+- `option(CPP_TK_BUILD_EXAMPLES "Build cpp_tk's own example programs" ON)`を新設し、`add_subdirectory(example)`をこのオプションでガードした(`CPP_TK_BUILD_TESTS`と対称な設計、既定ON)。
+- `cpp_tk_configure_target(target)`関数に第2引数(省略可)を追加し、`CPP_TK_RUNTIME_DIR`配下のサブディレクトリ名を指定できるようにした(`cpp_tk_configure_target(sample1 example)` → `bin/example/sample1`)。`example/CMakeLists.txt`・`example/theme/CMakeLists.txt`は`example`、`test/CMakeLists.txt`は`test`を渡すよう変更し、`bin/example/`と`bin/test/`が分離された。
+- `cpp_tk_package_runtime_scripts()`の呼び出し先も`${CPP_TK_RUNTIME_DIR}/example`に変更し、`CPP_TK_BUILD_EXAMPLES`が有効な場合のみ実行するようガードした(`test/`側にはTcl/Tkランタイムスクリプトをコピーする意味が無いため)。
+- 再ビルドし、`bin/example/`(実行ファイル+`tcl8.6`/`tk8.6`)と`bin/test/`(実行ファイルのみ)が意図通り分離されていることを目視確認。`-DCPP_TK_BUILD_EXAMPLES=OFF`で`example/`サブディレクトリが一切コンフィグレーションされないことも確認した。全26テストがgreenであることを再確認済み。
+- README.mdの該当箇所(サンプル実行コマンド・配布節・サブディレクトリ組み込み節)も新レイアウトに合わせて更新した。

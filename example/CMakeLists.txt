@@ -19,6 +19,8 @@ foreach(src_name
         PRIVATE
             ${PROJECT_NAME}
     )
+
+    cpp_tk_configure_target(${src_name} example)
 endforeach()
 
 add_subdirectory(theme)

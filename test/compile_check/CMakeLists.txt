@@ -1,14 +1,15 @@
-# docs/todo.md「Var&/StringVar&等が右辺値を拒否することのコンパイル失敗テスト」対応。
-# 通常の実行時テスト(doctest)では「コンパイルが失敗すること」自体を検証できないため、
-# ここだけは別の仕組みを使う。cpp_tk.hppはTcl/Tk非依存のpimplヘッダ(#includeは標準ライブラリのみ)
-# のため、いずれも-c(コンパイルのみ、リンクしない)で完結し、cpp_tkライブラリ本体やTcl/Tkへの
-# リンクは不要。
+# Compile-failure tests for "Var&/StringVar& etc. reject rvalues" (see docs/todo.md).
+# An ordinary runtime test (doctest) cannot verify that "compilation itself fails", so this uses
+# a different mechanism. cpp_tk.hpp is a Tcl/Tk-independent pimpl header (only standard-library
+# #includes), so every case here is self-contained under -c (compile only, no link) - none of
+# them need to link against the cpp_tk library itself or Tcl/Tk.
 #
-# should_compile/ : 名前付きlvalueでの正しい呼び出し(対照群)。通常のOBJECTライブラリとして
-#                    cmake --build に含めるだけでよい(コンパイルが失敗すればビルド自体が落ちる)。
-# should_fail/     : 一時オブジェクト(右辺値)を渡す誤った呼び出し。1ファイル1API。
-#                    通常のビルド対象には含めず、CTestからコンパイラを個別に起動し、
-#                    WILL_FAIL TRUEで「失敗すればテスト成功」と判定する。
+# should_compile/ : the control group - correct calls using a named lvalue. Just included in
+#                    cmake --build as an ordinary OBJECT library (the build itself fails if
+#                    compilation fails).
+# should_fail/     : incorrect calls passing a temporary object (rvalue). One API per file.
+#                    Not part of the normal build; instead CTest invokes the compiler directly
+#                    for each one and asserts WILL_FAIL TRUE ("test passes if compilation fails").
 
 add_library(compile_check_should_compile OBJECT
     should_compile/rvalue_reject_control.cpp

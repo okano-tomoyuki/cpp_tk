@@ -1,6 +1,7 @@
-// ArgValue(Var&)は非constの参照のため、Menu::add_checkbutton等のoptionsマップに一時オブジェクト
-// (右辺値)のVarを直接渡すコードはコンパイルに失敗しなければならない(docs/tasks.md C-3節参照)。
-// variable()のような専用setterを経由しない、options経由の裏口を塞げているかの確認。
+// ArgValue(Var&) takes a non-const reference, so passing a temporary (rvalue) Var directly into
+// an options map like Menu::add_checkbutton's must fail to compile (see docs/tasks.md
+// section C-3). Confirms this backdoor via options (bypassing a dedicated setter like
+// variable()) is properly closed off.
 #include "cpp_tk.hpp"
 
 namespace tk = cpp_tk;
@@ -9,7 +10,7 @@ int main()
 {
     tk::Tk root;
     tk::Menu menu(root);
-    // 一時オブジェクト(tk::BooleanVar())をArgValueへ変換する箇所でコンパイルエラーになるべき
+    // Should fail to compile where the temporary tk::BooleanVar() is converted to ArgValue
     menu.add_checkbutton({{"label", "item"}, {"variable", tk::BooleanVar()}});
     return 0;
 }

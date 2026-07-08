@@ -1,7 +1,8 @@
-// should_fail/以下の各テストの対照群。同じAPIを名前付きlvalueで正しく呼び出し、
-// コンパイルが通ることを確認する(should_fail側の失敗が「右辺値だから」という意図した理由で
-// 起きていることの裏付け。API自体が壊れていて何を渡しても失敗する、といった誤検知を防ぐ)。
-// リンクはしない(OBJECTライブラリとしてコンパイルのみ行う)ため、実行はされない。
+// Control group for each test under should_fail/. Calls the same API correctly with a named
+// lvalue and confirms it compiles (this confirms that the should_fail failures happen for the
+// intended reason - "because it's an rvalue" - rather than a false positive where the API is
+// simply broken and fails for any argument). Not linked (compiled only, as an OBJECT library),
+// so this is never executed.
 #include "cpp_tk.hpp"
 
 namespace tk  = cpp_tk;
