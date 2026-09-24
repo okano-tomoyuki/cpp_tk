@@ -351,6 +351,33 @@ public:
         }, this, nullptr);
     }
 
+    // register_void_callback()の一回限り(one-shot)版。Widget::after()専用。
+    // Tclの`after ms cmd`は一度発火したら`cmd`を二度と呼ばないため、発火後は
+    // void_callback_map_のエントリとTcl側のコマンド自体を即座に破棄してよい(むしろ
+    // 破棄しないと、after()を繰り返し呼ぶループ(ChartView::redraw()等)のたびに
+    // 溜まり続けるリークになる。after_idで名前が毎回変わる設計上、register_void_callback
+    // のように「同名で上書きされるので自然に1個に収まる」形にはならないため)。
+    // 呼び出し中のcallbackをmapから読んだ`it->second`をそのまま呼びながら同じ
+    // エントリをeraseすると、実行中の関数オブジェクト自身を破棄することになり危険なため、
+    // 呼び出し前にコールバックをローカルへコピーしてから、mapのエントリと
+    // Tclコマンドはコピー実行後(=呼び出しが完全に終わった後)に破棄する。
+    void register_after_callback(const std::string& name, std::function<void()> callback)
+    {
+        void_callback_map_[name] = callback;
+        Tcl_CreateCommand(interp_, name.c_str(), [](ClientData client_data, Tcl_Interp* interp, int argc, const char* argv[]) -> int {
+            auto* self = static_cast<Interpreter*>(client_data);
+            auto it = self->void_callback_map_.find(argv[0]);
+            if (it != self->void_callback_map_.end())
+            {
+                std::function<void()> cb = it->second; // 呼び出し中に自分自身を破棄しないようコピー
+                invoke_guarded([&]() { cb(); });
+                self->void_callback_map_.erase(argv[0]);
+            }
+            Tcl_DeleteCommand(interp, argv[0]);
+            return TCL_OK;
+        }, this, nullptr);
+    }
+
     void register_double_callback(const std::string& name, std::function<void(const double&)> callback)
     {
         double_callback_map_[name] = callback;
@@ -891,6 +918,12 @@ void Widget::register_void_callback(const std::string& name, std::function<void(
     if (p) p->register_void_callback(name, callback);
 }
 
+void Widget::register_after_callback(const std::string& name, std::function<void()> callback) const
+{
+    auto* p = checked_interp("register_after_callback");
+    if (p) p->register_after_callback(name, callback);
+}
+
 void Widget::register_string_callback(const std::string& name, std::function<void(const std::string&)> callback) const
 {
     auto* p = checked_interp("register_string_callback");
@@ -1067,7 +1100,7 @@ Widget& Widget::bind_class(const std::string& class_name, const std::string& eve
 std::string Widget::after(const int& ms, std::function<void()> callback)
 {
     auto cb_name = sanitize(full_name()) + "_after_cb_" + std::to_string(impl_->after_id++);
-    register_void_callback(cb_name, callback);
+    register_after_callback(cb_name, callback);
     auto ok  = false;
     auto ret = call({"after", ms, cb_name}, &ok);
     return ret;
@@ -1245,6 +1278,30 @@ std::map<std::string, std::string> Widget::place_info() const
     auto result = call({"place", "info", impl_->full_name}, &ok);
     if (!ok) return {};
     return parse_geometry_info(*impl_->interp, result);
+}
+
+Widget& Widget::grid_propagate(bool value)
+{
+    call({"grid", "propagate", impl_->full_name, (int)(value ? 1 : 0)});
+    return *this;
+}
+
+bool Widget::grid_propagate() const
+{
+    auto ret = call({"grid", "propagate", impl_->full_name});
+    return safe_stol(ret.c_str()) != 0;
+}
+
+Widget& Widget::pack_propagate(bool value)
+{
+    call({"pack", "propagate", impl_->full_name, (int)(value ? 1 : 0)});
+    return *this;
+}
+
+bool Widget::pack_propagate() const
+{
+    auto ret = call({"pack", "propagate", impl_->full_name});
+    return safe_stol(ret.c_str()) != 0;
 }
 
 int Widget::winfo_screenwidth() const
@@ -1810,12 +1867,6 @@ Frame& Frame::width(const int &width)
 Frame& Frame::height(const int &height)
 {
     config({{"height", std::to_string(height)}});
-    return *this;
-}
-
-Frame& Frame::grid_propagate(const bool& value)
-{
-    call({"grid", "propagate", impl_->full_name, (int)(value ? 1 : 0)});
     return *this;
 }
 
@@ -3733,6 +3784,18 @@ Labelframe::Labelframe(const Widget& parent, const std::map<std::string, ArgValu
 Labelframe& Labelframe::text(const std::string& text)
 {
     config({{"text", text}});
+    return *this;
+}
+
+Labelframe& Labelframe::width(const int& width)
+{
+    config({{"width", std::to_string(width)}});
+    return *this;
+}
+
+Labelframe& Labelframe::height(const int& height)
+{
+    config({{"height", std::to_string(height)}});
     return *this;
 }
 

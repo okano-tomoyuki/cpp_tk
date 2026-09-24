@@ -684,6 +684,22 @@ public:
     /** 現在のplace配置オプションを返す(Python Misc.place_info()相当)。placeで管理されていなければ空。 */
     std::map<std::string, std::string> place_info() const;
 
+    /** gridで管理する子ウィジェットに合わせてこのウィジェット自身のサイズを追従させるかどうかを設定する
+     *  (Python Misc.grid_propagate()相当、Tcl `grid propagate`相当)。falseにすると子の要求サイズに
+     *  関わらずwidth()/height()等で指定した固定サイズを維持できる(Frame/Labelframe/Toplevel等、
+     *  gridでコンテナとして使う全ウィジェットで共通に使える)。 */
+    Widget& grid_propagate(bool value);
+
+    /** 現在のgrid_propagate設定を返す(引数無し版のgrid_propagate相当)。 */
+    bool grid_propagate() const;
+
+    /** packで管理する子ウィジェットに合わせてこのウィジェット自身のサイズを追従させるかどうかを設定する
+     *  (Python Misc.pack_propagate()相当、Tcl `pack propagate`相当)。 */
+    Widget& pack_propagate(bool value);
+
+    /** 現在のpack_propagate設定を返す(引数無し版のpack_propagate相当)。 */
+    bool pack_propagate() const;
+
     int winfo_screenwidth() const;
 
     int winfo_screenheight() const;
@@ -838,6 +854,10 @@ protected:
     // InterpreterClient::checked_interp()に集約されている)。
     void register_void_callback(const std::string& name, std::function<void()> callback) const;
 
+    // register_void_callback()の一回限り版。Widget::after()専用(発火後にTclコマンド/
+    // 登録エントリを自動で破棄するため、after()を繰り返し呼んでも蓄積しない)。
+    void register_after_callback(const std::string& name, std::function<void()> callback) const;
+
     void register_string_callback(const std::string& name, std::function<void(const std::string&)> callback) const;
 
     void register_double_callback(const std::string& name, std::function<void(const double&)> callback) const;
@@ -928,8 +948,6 @@ public:
     Frame& width(const int &width);
 
     Frame& height(const int &height);
-
-    Frame& grid_propagate(const bool& value);
 
 };
 
@@ -2032,6 +2050,10 @@ public:
     explicit Labelframe(const Widget& parent, const std::map<std::string, ArgValue>& options = {});
 
     Labelframe& text(const std::string& text);
+
+    Labelframe& width(const int& width);
+
+    Labelframe& height(const int& height);
 };
 
 /** ttk版のMenubutton(Python tkinter.ttk.Menubutton相当)。menu()には引き続きclassicのMenuを紐づける
