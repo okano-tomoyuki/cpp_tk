@@ -56,6 +56,14 @@ std::string sanitize(const std::string& s)
     return ret;
 }
 
+// bind系(bind/bind_all/bind_class/tag_bind)に渡すTclスクリプトを生成する。
+// %置換の並びはInterpreter::register_event_callback()でのargvの解釈順と一致させること。
+// 文字は%A(%cはExposeのcount)、イベント種別は%T(%tはタイムスタンプ)である点に注意。
+std::string make_event_script(const std::string& cb_name)
+{
+    return cb_name + " %x %y %X %Y %W %K %k %A %T %D";
+}
+
 // Menuの各項目("-command")用の一意なTclプロシージャ名を生成する。項目はindexでしか
 // 識別できず、indexは挿入/削除で変動するため、Menuインスタンス単位ではなくプロセス全体で
 // 単調増加するカウンタを使って衝突を避ける(以前設定した項目のindexが後から他の項目に
@@ -1029,7 +1037,7 @@ Widget& Widget::bind(const std::string& event, std::function<void(const Event&)>
 {
     auto cb_name = sanitize(full_name()) + "_" + sanitize(event) + "_bind_cb";
     register_event_callback(cb_name, callback);
-    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    auto script = make_event_script(cb_name);
     call({"bind", impl_->full_name, event, script});
     return *this;
 }
@@ -1044,7 +1052,7 @@ Widget& Widget::bind_all(const std::string& event, std::function<void(const Even
 {
     auto cb_name = "all_" + sanitize(event) + "_bindall_cb";
     register_event_callback(cb_name, callback);
-    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    auto script = make_event_script(cb_name);
     call({"bind", "all", event, script});
     return *this;
 }
@@ -1059,7 +1067,7 @@ Widget& Widget::bind_class(const std::string& class_name, const std::string& eve
 {
     auto cb_name = sanitize(class_name) + "_" + sanitize(event) + "_bindclass_cb";
     register_event_callback(cb_name, callback);
-    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    auto script = make_event_script(cb_name);
     call({"bind", class_name, event, script});
     return *this;
 }
@@ -2052,7 +2060,7 @@ Canvas& Canvas::tag_bind(const std::string& id_or_tag, const std::string& event,
 {
     auto cb_name = sanitize(full_name()) + "_tag_" + sanitize(id_or_tag) + "_" + sanitize(event);
     register_event_callback(cb_name, callback);
-    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    auto script = make_event_script(cb_name);
     call({impl_->full_name, "bind", id_or_tag, event, script});
     return *this;
 }
@@ -4280,7 +4288,7 @@ Treeview& Treeview::tag_bind(const std::string& tag, const std::string& event, s
 
     register_event_callback(cb_name, callback);
 
-    std::string script = cb_name + " %x %y %X %Y %W %K %k %c %t %D";
+    auto script = make_event_script(cb_name);
 
     call({impl_->full_name, "tag", "bind", tag, event, script});
     return *this;
