@@ -102,6 +102,49 @@ TEST_CASE("bind/unbind: a bound callback fires, and stops firing after unbind")
     f.event_generate("<<TestEvent>>");
     f.update();
     CHECK(fired == 1); // unchanged after unbind
+
+    // Leaving this frame packed in the 1x1 root would use up the whole pack cavity, so later
+    // frames would be unmapped by pack and could no longer receive generated events.
+    f.destroy();
+}
+
+TEST_CASE("bind: Event fields carry the pressed character (%A) and the event type (%T)")
+{
+    tk::Tk root;
+    // Same as above: keep the window mapped off-screen so event_generate is delivered.
+    root.withdraw();
+    root.deiconify();
+    root.geometry("1x1-3000-3000");
+    root.wait_visibility();
+    tk::Frame f(root);
+    f.pack();
+    f.update();
+
+    tk::Event button_event{};
+    int button_fired = 0;
+    f.bind("<ButtonPress-1>", [&](const tk::Event& e) { button_event = e; ++button_fired; });
+    f.event_generate("<ButtonPress-1>", {{"x", 3}, {"y", 4}});
+    f.update();
+    REQUIRE(button_fired == 1);
+    CHECK(button_event.x == 3);
+    CHECK(button_event.y == 4);
+    CHECK(button_event.type == "4"); // ButtonPress
+
+    // Generated key events are delivered only to the focus window, so give the Frame the focus first.
+    f.focus_force();
+    f.update();
+
+    tk::Event key_event{};
+    int key_fired = 0;
+    f.bind("<KeyPress>", [&](const tk::Event& e) { key_event = e; ++key_fired; });
+    f.event_generate("<KeyPress>", {{"keysym", "a"}});
+    f.update();
+    REQUIRE(key_fired == 1);
+    CHECK(key_event.keysym == "a");
+    CHECK(key_event.character == "a");
+    CHECK(key_event.type == "2"); // KeyPress
+
+    f.destroy();
 }
 
 TEST_CASE("after: the callback runs after the specified number of milliseconds (via mainloop)")
